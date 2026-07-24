@@ -1,5 +1,5 @@
-# Rails.logger.info "[CloudAttachmentPro LOAD] Attempting to load AttachmentsControllerPatch file: #{__FILE__}"
-module RedmineCloudAttachmentPro
+# Rails.logger.info "[CloudAttachment LOAD] Attempting to load AttachmentsControllerPatch file: #{__FILE__}"
+module RedmineCloudAttachment
   module Patches
     module AttachmentsControllerPatch
       extend ActiveSupport::Concern
@@ -22,7 +22,7 @@ module RedmineCloudAttachmentPro
 
             if presigned_url_value
               begin
-                Rails.logger.info "[CloudAttachmentPro] Redirecting to presigned URL for attachment ##{@attachment.id} (#{@attachment.filename}) - offloading to cloud storage"
+                Rails.logger.info "[CloudAttachment] Redirecting to presigned URL for attachment ##{@attachment.id} (#{@attachment.filename}) - offloading to cloud storage"
                 
                 # Update download counter for project/version attachments
                 if @attachment.container.is_a?(Version) || @attachment.container.is_a?(Project)
@@ -32,17 +32,17 @@ module RedmineCloudAttachmentPro
                 redirect_to presigned_url_value, allow_other_host: true
                 return # Crucial to prevent original_download_for_cloud_pro from executing
               rescue => e
-                Rails.logger.error "[CloudAttachmentPro] Error during presigned URL redirect for attachment ##{@attachment&.id}: #{e.message}. Falling back to normal download."
+                Rails.logger.error "[CloudAttachment] Error during presigned URL redirect for attachment ##{@attachment&.id}: #{e.message}. Falling back to normal download."
                 # Fall through to original_download_for_cloud_pro
               end
             else
-              Rails.logger.warn "[CloudAttachmentPro] Failed to generate presigned URL for attachment ##{@attachment.id}, falling back to normal download"
+              Rails.logger.warn "[CloudAttachment] Failed to generate presigned URL for attachment ##{@attachment.id}, falling back to normal download"
             end
           end
 
           # If no presigned URL, or an error occurred, or attachment doesn't support it,
           # or if the @attachment conditions were not met, call original download method.
-          Rails.logger.debug "[CloudAttachmentPro] Using original download method for attachment ##{@attachment&.id}"
+          Rails.logger.debug "[CloudAttachment] Using original download method for attachment ##{@attachment&.id}"
           original_download_for_cloud_pro
         end
 
@@ -51,7 +51,7 @@ module RedmineCloudAttachmentPro
           # For cloud files that need content reading (text files, diffs), we still need to download
           # But we can optimize by only doing this when necessary
           if @attachment&.respond_to?(:cloud_diskfile?) && @attachment.cloud_diskfile?
-            Rails.logger.debug "[CloudAttachmentPro] Processing show request for cloud attachment ##{@attachment.id} (#{@attachment.filename})"
+            Rails.logger.debug "[CloudAttachment] Processing show request for cloud attachment ##{@attachment.id} (#{@attachment.filename})"
             
             respond_to do |format|
               format.html do
@@ -66,7 +66,7 @@ module RedmineCloudAttachmentPro
                 
                 # For diff and text files, we need to download content
                 if @attachment.is_diff?
-                  Rails.logger.info "[CloudAttachmentPro] Downloading diff content from cloud for attachment ##{@attachment.id}"
+                  Rails.logger.info "[CloudAttachment] Downloading diff content from cloud for attachment ##{@attachment.id}"
                   @diff = File.read(@attachment.diskfile, :mode => "rb")
                   @diff_type = params[:type] || User.current.pref[:diff_type] || 'inline'
                   @diff_type = 'inline' unless %w(inline sbs).include?(@diff_type)
@@ -77,14 +77,14 @@ module RedmineCloudAttachmentPro
                   end
                   render :action => 'diff'
                 elsif @attachment.is_text? && @attachment.filesize <= Setting.file_max_size_displayed.to_i.kilobyte
-                  Rails.logger.info "[CloudAttachmentPro] Downloading text content from cloud for attachment ##{@attachment.id}"
+                  Rails.logger.info "[CloudAttachment] Downloading text content from cloud for attachment ##{@attachment.id}"
                   @content = File.read(@attachment.diskfile, :mode => "rb")
                   render :action => 'file'
                 elsif @attachment.is_image?
                   # For images, we can directly show the cloud URL if available
                   expires_in = @attachment.cloud_expiry_time
                   @direct_url = @attachment.direct_download_url(expires_in)
-                  Rails.logger.debug "[CloudAttachmentPro] Using direct cloud URL for image display: #{@direct_url.present?}"
+                  Rails.logger.debug "[CloudAttachment] Using direct cloud URL for image display: #{@direct_url.present?}"
                   render :action => 'image'
                 else
                   render :action => 'other'
@@ -129,7 +129,7 @@ module RedmineCloudAttachmentPro
             if @attachment.readable?
               true
             else
-              Rails.logger.error "[CloudAttachmentPro] Cloud attachment #{@attachment.id} is not accessible"
+              Rails.logger.error "[CloudAttachment] Cloud attachment #{@attachment.id} is not accessible"
               render_404
             end
           else

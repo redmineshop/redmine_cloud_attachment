@@ -3,7 +3,7 @@ require 'google/cloud/storage'
 require 'azure/storage/blob'
 require_dependency 'attachment'
 
-module RedmineCloudAttachmentPro
+module RedmineCloudAttachment
   module AttachmentPatch
     def self.included(base)
       base.class_eval do
@@ -48,7 +48,7 @@ module RedmineCloudAttachmentPro
           return local_diskfile unless cloud_diskfile?
 
           # Log usage for monitoring - this should be rarely called if direct downloads are working
-          Rails.logger.info("[CloudAttachmentPro] diskfile() called for cloud attachment #{self.id} - consider using direct_download_url() for better performance")
+          Rails.logger.info("[CloudAttachment] diskfile() called for cloud attachment #{self.id} - consider using direct_download_url() for better performance")
 
           # Use instance variable to cache the temp file path per request/instance
           return @cached_temp_diskfile if @cached_temp_diskfile && File.exist?(@cached_temp_diskfile)
@@ -63,7 +63,7 @@ module RedmineCloudAttachmentPro
             @temp_file_obj.rewind
             @cached_temp_diskfile = @temp_file_obj.path
           rescue => e
-            Rails.logger.error("[CloudAttachmentPro] Fallback to local for attachment #{self.id} due to cloud download error: #{e.message}")
+            Rails.logger.error("[CloudAttachment] Fallback to local for attachment #{self.id} due to cloud download error: #{e.message}")
             cleanup_temp_file
             return local_diskfile
           end
@@ -77,7 +77,7 @@ module RedmineCloudAttachmentPro
           begin
             delete_from_backend(cloud_key)
           rescue => e
-            Rails.logger.error("[CloudAttachmentPro] Failed to delete #{cloud_key} from cloud for attachment #{self.id}: #{e.message}")
+            Rails.logger.error("[CloudAttachment] Failed to delete #{cloud_key} from cloud for attachment #{self.id}: #{e.message}")
           end
         end
 
@@ -105,7 +105,7 @@ module RedmineCloudAttachmentPro
           if cloud_diskfile?
             # For cloud files, we need to download and generate thumbnail locally
             # But we'll cache it to avoid repeated downloads
-            Rails.logger.debug("[CloudAttachmentPro] Generating thumbnail for cloud attachment #{self.id}")
+            Rails.logger.debug("[CloudAttachment] Generating thumbnail for cloud attachment #{self.id}")
             
             if thumbnailable? && readable?
               size = options[:size].to_i
@@ -138,7 +138,7 @@ module RedmineCloudAttachmentPro
                 
                 if logger
                   logger.error(
-                    "[CloudAttachmentPro] An error occurred while generating thumbnail for cloud attachment #{self.id}: #{e.message}"
+                    "[CloudAttachment] An error occurred while generating thumbnail for cloud attachment #{self.id}: #{e.message}"
                   )
                 end
                 return nil
@@ -152,9 +152,13 @@ module RedmineCloudAttachmentPro
 
         # Helper method to get expiry time from configuration
         def cloud_expiry_time
-          (Redmine::Configuration['cloud_attachment_pro'] && 
-           Redmine::Configuration['cloud_attachment_pro']['presigned_url_expires_in']) ? 
-           Redmine::Configuration['cloud_attachment_pro']['presigned_url_expires_in'].to_i.minutes : 15.minutes
+          plugin_cfg = Redmine::Configuration['cloud_attachment'] ||
+                       Redmine::Configuration['cloud_attachment_pro']
+          if plugin_cfg && plugin_cfg['presigned_url_expires_in']
+            plugin_cfg['presigned_url_expires_in'].to_i.minutes
+          else
+            15.minutes
+          end
         end
 
         # Check if attachment is stored in cloud
@@ -311,10 +315,10 @@ module RedmineCloudAttachmentPro
           begin
             signer = Aws::S3::Presigner.new(client: s3_client)
             url = signer.presigned_url(:get_object, bucket: s3_bucket, key: cloud_key, expires_in: expires_in.to_i)
-            Rails.logger.debug("[CloudAttachmentPro] Generated S3 presigned URL for attachment #{self.id}")
+            Rails.logger.debug("[CloudAttachment] Generated S3 presigned URL for attachment #{self.id}")
             url
           rescue => e
-            Rails.logger.error("[CloudAttachmentPro] Failed to generate S3 presigned URL for #{cloud_key} (attachment #{self.id}): #{e.message}")
+            Rails.logger.error("[CloudAttachment] Failed to generate S3 presigned URL for #{cloud_key} (attachment #{self.id}): #{e.message}")
             nil
           end
         end
@@ -329,10 +333,10 @@ module RedmineCloudAttachmentPro
             return nil unless file
             
             url = file.signed_url(method: "GET", expires: expires_in.to_i)
-            Rails.logger.debug("[CloudAttachmentPro] Generated GCS presigned URL for attachment #{self.id}")
+            Rails.logger.debug("[CloudAttachment] Generated GCS presigned URL for attachment #{self.id}")
             url
           rescue => e
-            Rails.logger.error("[CloudAttachmentPro] Failed to generate GCS presigned URL for #{cloud_key} (attachment #{self.id}): #{e.message}")
+            Rails.logger.error("[CloudAttachment] Failed to generate GCS presigned URL for #{cloud_key} (attachment #{self.id}): #{e.message}")
             nil
           end
         end
@@ -356,10 +360,10 @@ module RedmineCloudAttachmentPro
             )
             
             url = azure_blob_client.generate_uri("#{azure_container}/#{cloud_key}") + "?#{sas_token}"
-            Rails.logger.debug("[CloudAttachmentPro] Generated Azure presigned URL for attachment #{self.id}")
+            Rails.logger.debug("[CloudAttachment] Generated Azure presigned URL for attachment #{self.id}")
             url
           rescue => e
-            Rails.logger.error("[CloudAttachmentPro] Failed to generate Azure presigned URL for #{cloud_key} (attachment #{self.id}): #{e.message}")
+            Rails.logger.error("[CloudAttachment] Failed to generate Azure presigned URL for #{cloud_key} (attachment #{self.id}): #{e.message}")
             nil
           end
         end
@@ -377,7 +381,7 @@ module RedmineCloudAttachmentPro
         # Clean up temp files after thumbnail generation
         def cleanup_after_thumbnail
           cleanup_temp_file
-          Rails.logger.debug("[CloudAttachmentPro] Cleaned up temp files after thumbnail generation for attachment #{self.id}")
+          Rails.logger.debug("[CloudAttachment] Cleaned up temp files after thumbnail generation for attachment #{self.id}")
         end
       end
     end
@@ -385,4 +389,4 @@ module RedmineCloudAttachmentPro
 end
 
 # Ensure the patch is applied only once
-Attachment.include RedmineCloudAttachmentPro::AttachmentPatch unless Attachment.included_modules.include?(RedmineCloudAttachmentPro::AttachmentPatch)
+Attachment.include RedmineCloudAttachment::AttachmentPatch unless Attachment.included_modules.include?(RedmineCloudAttachment::AttachmentPatch)
