@@ -103,21 +103,87 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
     assert [true, false].include?(result), "readable? should return boolean"
   end
 
+  def test_local_readable_delegates_to_core_via_super
+    attachment = Attachment.new(
+      filename: 'local.jpg',
+      disk_filename: '260724_local.jpg',
+      content_type: 'image/jpeg'
+    )
+
+    assert_not attachment.cloud_diskfile?
+    assert attachment.method(:readable?).owner == RedmineCloudAttachment::AttachmentPatch
+    assert_not_nil attachment.method(:readable?).super_method,
+                   'prepend must keep Attachment#readable? reachable via super'
+    # Without a real file this is false, but must not raise NoMethodError
+    assert_equal false, attachment.readable?
+  end
+
+  def test_azure_credential_helpers_accept_sample_and_legacy_keys
+    attachment = Attachment.new(
+      filename: 'test.txt',
+      disk_filename: 'azure_test_123.txt'
+    )
+
+    attachment.define_singleton_method(:cloud_config) do
+      {
+        'container' => 'attachments',
+        'storage_account_name' => 'sampleacct',
+        'storage_access_key' => 'samplekey'
+      }
+    end
+    assert_equal 'sampleacct', attachment.send(:azure_account_name)
+    assert_equal 'samplekey', attachment.send(:azure_access_key)
+
+    attachment.define_singleton_method(:cloud_config) do
+      {
+        'container' => 'attachments',
+        'account_name' => 'legacyacct',
+        'access_key' => 'legacykey'
+      }
+    end
+    assert_equal 'legacyacct', attachment.send(:azure_account_name)
+    assert_equal 'legacykey', attachment.send(:azure_access_key)
+  end
+
   def test_thumbnailable_for_image_attachments
     image_attachment = Attachment.new(
       filename: 'test.jpg',
       disk_filename: 's3_test_123.jpg',
       content_type: 'image/jpeg'
     )
-    
-    assert image_attachment.thumbnailable?, "Image attachment should be thumbnailable"
-    
+
+    assert image_attachment.thumbnailable?, 'Image attachment should be thumbnailable'
+
     text_attachment = Attachment.new(
       filename: 'test.txt',
       disk_filename: 's3_test_123.txt',
       content_type: 'text/plain'
     )
-    
-    assert_not text_attachment.thumbnailable?, "Text attachment should not be thumbnailable"
+
+    assert_not text_attachment.thumbnailable?, 'Text attachment should not be thumbnailable'
   end
-end 
+
+  def test_s3_client_options_include_minio_endpoint
+    attachment = Attachment.new(disk_filename: 's3_test.txt')
+    attachment.define_singleton_method(:cloud_config) do
+      {
+        'bucket' => 'redmine-attachments',
+        'region' => 'us-east-1',
+        'access_key_id' => 'minioadmin',
+        'secret_access_key' => 'minioadmin',
+        'endpoint' => 'http://demo-minio:9000',
+        'public_endpoint' => 'http://localhost:9000',
+        'force_path_style' => true
+      }
+    end
+
+    opts = attachment.send(:s3_client_options)
+    assert_equal 'http://demo-minio:9000', opts[:endpoint]
+    assert_equal true, opts[:force_path_style]
+    assert_equal 'us-east-1', opts[:region]
+
+    public_opts = attachment.send(:s3_client_options, endpoint: 'http://localhost:9000')
+    assert_equal 'http://localhost:9000', public_opts[:endpoint]
+    assert_equal true, public_opts[:force_path_style]
+  end
+end

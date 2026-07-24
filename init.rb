@@ -6,97 +6,55 @@ require_relative 'lib/redmine_cloud_attachment/version'
 
 Redmine::Plugin.register :redmine_cloud_attachment do
   name 'Redmine Cloud Attachment'
-  author 'RedmineShop (based on railsfactory/redmine_cloud_attachment)'
+  author 'RedmineShop (based on railsfactory/redmine_cloud_attachment_pro)'
   description 'Store Redmine attachments in AWS S3, Google Cloud Storage, or Azure Blob — with presigned URL support for secure direct downloads.'
   version RedmineCloudAttachment::VERSION
   url 'https://redmineshop.com/products/redmine-cloud-attachment'
   author_url 'https://redmineshop.com'
+end
 
-  # Rails.logger.info "[CloudAttachment INIT] Inside plugin registration block."
+module RedmineCloudAttachment
+  module Boot
+    module_function
 
-  # Plugin settings definition (if any)
-  # settings default: { 'setting_key' => 'default_value' }, partial: 'settings/rcap_settings'
+    def apply_patches
+      plugin_dir = Redmine::Plugin.find(:redmine_cloud_attachment).directory
 
-  # Rails.logger.info "[CloudAttachment INIT] Attempting to load and apply patches directly."
+      require_dependency File.join(plugin_dir, 'lib', 'redmine_cloud_attachment', 'attachment_patch')
+      require_dependency File.join(
+        plugin_dir, 'lib', 'redmine_cloud_attachment', 'patches', 'attachments_controller_patch'
+      )
+      require_dependency File.join(
+        plugin_dir, 'lib', 'redmine_cloud_attachment', 'patches', 'attachments_helper_patch'
+      )
 
-  # Ensure Attachment class is loaded before patching
-  begin
-    require_dependency 'attachment' # Core Redmine class
-    patch_module_fqn = 'RedmineCloudAttachment::AttachmentPatch'
-    patch_file_path = File.join(File.dirname(__FILE__), 'lib', 'redmine_cloud_attachment', 'attachment_patch.rb')
-    # Rails.logger.info "[CloudAttachment INIT] Requiring AttachmentPatch from: #{patch_file_path}"
-    require_dependency patch_file_path
-    # Rails.logger.info "[CloudAttachment INIT] Successfully required AttachmentPatch."
+      unless Attachment.ancestors.include?(RedmineCloudAttachment::AttachmentPatch)
+        Attachment.prepend RedmineCloudAttachment::AttachmentPatch
+      end
 
-    patch_module = patch_module_fqn.constantize
-    target_class = Attachment
+      unless AttachmentsController.ancestors.include?(
+        RedmineCloudAttachment::Patches::AttachmentsControllerPatch
+      )
+        AttachmentsController.prepend RedmineCloudAttachment::Patches::AttachmentsControllerPatch
+      end
 
-    unless target_class.included_modules.include?(patch_module)
-      target_class.send(:include, patch_module)
-      # Rails.logger.info "[CloudAttachment INIT] Successfully patched Attachment model with #{patch_module_fqn}."
-    # else
-      # Rails.logger.info "[CloudAttachment INIT] Attachment model already includes #{patch_module_fqn}."
+      unless AttachmentsHelper.ancestors.include?(
+        RedmineCloudAttachment::Patches::AttachmentsHelperPatch
+      )
+        AttachmentsHelper.prepend RedmineCloudAttachment::Patches::AttachmentsHelperPatch
+      end
     end
-  rescue LoadError => e
-    Rails.logger.error "[CloudAttachment] Error loading/applying AttachmentPatch. Message: #{e.message}"
-  rescue NameError => e
-    Rails.logger.error "[CloudAttachment] Error finding Attachment or AttachmentPatch module. Message: #{e.message}"
-  rescue StandardError => e
-    Rails.logger.error "[CloudAttachment] General error applying AttachmentPatch. Message: #{e.message}"
   end
+end
 
-  # Ensure AttachmentsController is loaded before patching
-  begin
-    require_dependency 'attachments_controller' # Core Redmine class
-    controller_patch_fqn = 'RedmineCloudAttachment::Patches::AttachmentsControllerPatch'
-    controller_patch_path = File.join(File.dirname(__FILE__), 'lib', 'redmine_cloud_attachment', 'patches', 'attachments_controller_patch.rb')
-    # Rails.logger.info "[CloudAttachment INIT] Requiring AttachmentsControllerPatch from: #{controller_patch_path}"
-    require_dependency controller_patch_path
-    # Rails.logger.info "[CloudAttachment INIT] Successfully required AttachmentsControllerPatch."
-
-    patch_module = controller_patch_fqn.constantize
-    target_controller = AttachmentsController
-
-    unless target_controller.included_modules.include?(patch_module)
-      target_controller.send(:include, patch_module) # Using include, ensure patch uses `included do` or `prepended do` as appropriate
-      # Rails.logger.info "[CloudAttachment INIT] Successfully patched AttachmentsController with #{controller_patch_fqn}."
-    # else
-      # Rails.logger.info "[CloudAttachment INIT] AttachmentsController already includes #{controller_patch_fqn}."
-    end
-  rescue LoadError => e
-    Rails.logger.error "[CloudAttachment] Error loading/applying AttachmentsControllerPatch. Message: #{e.message}"
-  rescue NameError => e
-    Rails.logger.error "[CloudAttachment] Error finding AttachmentsController or its patch module. Message: #{e.message}"
-  rescue StandardError => e
-    Rails.logger.error "[CloudAttachment] General error applying AttachmentsControllerPatch. Message: #{e.message}"
+# Zeitwerk (Redmine 6+): apply after full boot. Classic: re-apply on each reload.
+if Rails.version > '6.0' && Rails.autoloaders.zeitwerk_enabled?
+  Rails.application.config.after_initialize do
+    RedmineCloudAttachment::Boot.apply_patches
   end
-
-  # Ensure AttachmentsHelper is loaded before patching
-  begin
-    require_dependency 'attachments_helper' # Core Redmine helper
-    helper_patch_fqn = 'RedmineCloudAttachment::Patches::AttachmentsHelperPatch'
-    helper_patch_path = File.join(File.dirname(__FILE__), 'lib', 'redmine_cloud_attachment', 'patches', 'attachments_helper_patch.rb')
-    require_dependency helper_patch_path
-
-    patch_module = helper_patch_fqn.constantize
-    target_helper = AttachmentsHelper
-
-    unless target_helper.included_modules.include?(patch_module)
-      target_helper.send(:include, patch_module)
-      Rails.logger.debug "[CloudAttachment] Successfully patched AttachmentsHelper with #{helper_patch_fqn}."
-    end
-
-    # Also patch ApplicationHelper for thumbnail_path method
-    ApplicationHelper.send(:include, patch_module) unless ApplicationHelper.included_modules.include?(patch_module)
-  rescue LoadError => e
-    Rails.logger.error "[CloudAttachment] Error loading/applying AttachmentsHelperPatch. Message: #{e.message}"
-  rescue NameError => e
-    Rails.logger.error "[CloudAttachment] Error finding AttachmentsHelper or its patch module. Message: #{e.message}"
-  rescue StandardError => e
-    Rails.logger.error "[CloudAttachment] General error applying AttachmentsHelperPatch. Message: #{e.message}"
+else
+  reloader = Rails.version > '5' ? ActiveSupport::Reloader : ActionDispatch::Callbacks
+  reloader.to_prepare do
+    RedmineCloudAttachment::Boot.apply_patches
   end
-
-  # Note: optimization_test.rb moved to test/ directory
-
-  # Rails.logger.info "[CloudAttachment INIT] Exiting plugin registration block after attempting direct patch loading."
 end
