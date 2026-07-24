@@ -5,18 +5,26 @@ production:
   storage: :s3 # or :gcs or :azure or :local
   s3:
     enabled: true
+    # Optional when using IAM instance profile / task role:
     access_key_id: <%= ENV["AWS_ACCESS_KEY"] %>
     secret_access_key: <%= ENV["AWS_SECRET_KEY"] %>
     bucket: <%= ENV["REDMINE_FILES_ATTACHEMENT_S3_BUCKET"] %>
     region: <%= ENV["AWS_REGION"] %>
-    path: <%= ENV["AWS_PATH"] %>
+    path: <%= ENV["AWS_PATH"] || "redmine/files" %>
   gcs:
     project_id: "your-gcp-project"
     bucket: "your-gcs-bucket"
     gcs_credentials: "/path/to/your/service_account.json"
     path: "redmine/files"
   azure:
+    # Both naming styles are accepted by the plugin:
     storage_account_name: "your-storage-account-name"
     storage_access_key: "your-storage-access-key"
+    # account_name: "your-storage-account-name"
+    # access_key: "your-storage-access-key"
     container: "your-container-name"
     path: "redmine/files"
+  # Optional plugin settings (legacy key cloud_attachment_pro also accepted):
+  cloud_attachment:
+    # Presigned URL lifetime in minutes (default 15)
+    presigned_url_expires_in: 15
