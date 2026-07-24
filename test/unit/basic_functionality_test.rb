@@ -13,7 +13,7 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
 
   def test_plugin_loaded_correctly
     # Test that the plugin is loaded
-    assert Redmine::Plugin.registered_plugins.has_key?(:redmine_cloud_attachment_pro), 
+    assert Redmine::Plugin.registered_plugins.has_key?(:redmine_cloud_attachment), 
            "Plugin should be registered"
   end
 

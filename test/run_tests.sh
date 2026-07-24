@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Script to run tests for redmine_cloud_attachment_pro plugin
+# Script to run tests for redmine_cloud_attachment plugin
 # Based on official Redmine Plugin Tutorial documentation
 
-echo "🧪 Running tests for redmine_cloud_attachment_pro plugin..."
+echo "🧪 Running tests for redmine_cloud_attachment plugin..."
 
 # Navigate to Redmine root
 cd "$(dirname "$0")/../../.."
@@ -36,7 +36,7 @@ run_test() {
 # Check if test database is setup
 if ! bundle exec rails runner -e test "puts 'Test DB OK'" >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠️ Test database not setup. Running setup script...${NC}"
-    ./plugins/redmine_cloud_attachment_pro/test/setup_test_db.sh
+    ./plugins/redmine_cloud_attachment/test/setup_test_db.sh
 fi
 
 echo -e "${YELLOW}🚀 Starting test execution...${NC}"
@@ -46,7 +46,7 @@ failed_tests=0
 total_tests=0
 
 # Unit tests
-for test_file in plugins/redmine_cloud_attachment_pro/test/unit/*.rb; do
+for test_file in plugins/redmine_cloud_attachment/test/unit/*.rb; do
     if [ -f "$test_file" ]; then
         total_tests=$((total_tests + 1))
         if ! run_test "$test_file"; then
@@ -56,7 +56,7 @@ for test_file in plugins/redmine_cloud_attachment_pro/test/unit/*.rb; do
 done
 
 # Integration tests
-for test_file in plugins/redmine_cloud_attachment_pro/test/integration/*.rb; do
+for test_file in plugins/redmine_cloud_attachment/test/integration/*.rb; do
     if [ -f "$test_file" ]; then
         total_tests=$((total_tests + 1))
         if ! run_test "$test_file"; then

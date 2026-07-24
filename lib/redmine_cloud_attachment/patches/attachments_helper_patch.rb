@@ -1,4 +1,4 @@
-module RedmineCloudAttachmentPro
+module RedmineCloudAttachment
   module Patches
     module AttachmentsHelperPatch
       extend ActiveSupport::Concern
@@ -16,7 +16,7 @@ module RedmineCloudAttachmentPro
             direct_url = attachment.direct_download_url(expires_in)
             if direct_url
               api.direct_content_url direct_url
-              Rails.logger.debug "[CloudAttachmentPro] Added direct cloud URL to API response for attachment #{attachment.id}"
+              Rails.logger.debug "[CloudAttachment] Added direct cloud URL to API response for attachment #{attachment.id}"
             end
           end
         end
