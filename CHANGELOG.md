@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] — 2026-07-24
+
+### Added
+
+- S3-compatible / MinIO support via `s3.endpoint`, `s3.force_path_style`, and optional `s3.public_endpoint` for browser-reachable presigned URLs
+
 ## [1.2.1] — 2026-07-24
 
 ### Fixed
@@ -58,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thumbnail generation for cloud-stored images
 - Compatible with Redmine 5.0.x and 6.x
 
+[1.2.2]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.2.2
 [1.2.1]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.2.1
 [1.2.0]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.2.0
 [1.1.1]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.1.1

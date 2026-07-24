@@ -32,7 +32,7 @@ Download the SHA256-verified package from [RedmineShop](https://redmineshop.com/
 
 ```bash
 # From your Redmine root
-tar -xzf redmine_cloud_attachment-1.2.1.tar.gz -C plugins/
+tar -xzf redmine_cloud_attachment-1.2.2.tar.gz -C plugins/
 bundle install
 # Restart your Redmine server
 ```
@@ -70,6 +70,27 @@ production:
 ```
 
 Presigned download URLs expire after the configured minutes (default 15). Do not treat them as permanent links.
+
+### MinIO / S3-compatible example
+
+```yaml
+production:
+  storage: :s3
+  s3:
+    enabled: true
+    access_key_id: minioadmin
+    secret_access_key: minioadmin
+    bucket: redmine-attachments
+    region: us-east-1
+    path: redmine/files
+    endpoint: http://minio:9000
+    # Host the browser can reach for presigned downloads (optional but required in Docker)
+    public_endpoint: http://localhost:9000
+    force_path_style: true
+```
+
+`endpoint` is used for put/get/delete from the Redmine process. When `public_endpoint` is set,
+presigned download URLs are signed against that host instead (so redirects work outside Docker).
 
 ## Troubleshooting
 

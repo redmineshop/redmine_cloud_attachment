@@ -162,4 +162,28 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
 
     assert_not text_attachment.thumbnailable?, 'Text attachment should not be thumbnailable'
   end
+
+  def test_s3_client_options_include_minio_endpoint
+    attachment = Attachment.new(disk_filename: 's3_test.txt')
+    attachment.define_singleton_method(:cloud_config) do
+      {
+        'bucket' => 'redmine-attachments',
+        'region' => 'us-east-1',
+        'access_key_id' => 'minioadmin',
+        'secret_access_key' => 'minioadmin',
+        'endpoint' => 'http://demo-minio:9000',
+        'public_endpoint' => 'http://localhost:9000',
+        'force_path_style' => true
+      }
+    end
+
+    opts = attachment.send(:s3_client_options)
+    assert_equal 'http://demo-minio:9000', opts[:endpoint]
+    assert_equal true, opts[:force_path_style]
+    assert_equal 'us-east-1', opts[:region]
+
+    public_opts = attachment.send(:s3_client_options, endpoint: 'http://localhost:9000')
+    assert_equal 'http://localhost:9000', public_opts[:endpoint]
+    assert_equal true, public_opts[:force_path_style]
+  end
 end

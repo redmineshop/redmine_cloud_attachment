@@ -1,8 +1,30 @@
+# Default / development: local disk (no cloud).
+# Switch development to MinIO (S3-compatible) using the block below — see demo stack.
+default:
+  email_delivery:
+
 development:
   storage: :local
 
+  # --- MinIO (S3-compatible) — uncomment to use demo MinIO ---
+  # storage: :s3
+  # s3:
+  #   enabled: true
+  #   access_key_id: "minioadmin"
+  #   secret_access_key: "minioadmin"
+  #   bucket: "redmine-attachments"
+  #   region: "us-east-1"
+  #   path: "redmine/files"
+  #   # Redmine container → MinIO on Docker network
+  #   endpoint: "http://demo-minio:9000"
+  #   # Browser-facing host for presigned download URLs
+  #   public_endpoint: "http://localhost:9000"
+  #   force_path_style: true
+  # cloud_attachment:
+  #   presigned_url_expires_in: 15
+
 production:
-  storage: :s3 # or :gcs or :azure or :local
+  storage: :s3 # or :gcs or :azure or :local or MinIO via endpoint below
   s3:
     enabled: true
     # Optional when using IAM instance profile / task role:
@@ -11,6 +33,10 @@ production:
     bucket: <%= ENV["REDMINE_FILES_ATTACHEMENT_S3_BUCKET"] %>
     region: <%= ENV["AWS_REGION"] %>
     path: <%= ENV["AWS_PATH"] || "redmine/files" %>
+    # MinIO / S3-compatible (optional):
+    # endpoint: "http://minio:9000"
+    # public_endpoint: "https://files.example.com"  # host browsers can reach
+    # force_path_style: true
   gcs:
     project_id: "your-gcp-project"
     bucket: "your-gcs-bucket"

@@ -302,16 +302,47 @@ module RedmineCloudAttachment
       require 'azure/storage/blob'
     end
 
+    # Builds Aws::S3::Client options. Supports MinIO / S3-compatible stores via:
+    #   endpoint, public_endpoint, force_path_style
+    def s3_client_options(endpoint: nil)
+      opts = { region: cloud_config['region'].presence || 'us-east-1' }
+      if cloud_config['access_key_id'].present?
+        opts[:access_key_id] = cloud_config['access_key_id']
+        opts[:secret_access_key] = cloud_config['secret_access_key']
+      end
+
+      resolved_endpoint = endpoint.presence || cloud_config['endpoint'].presence
+      if resolved_endpoint.present?
+        opts[:endpoint] = resolved_endpoint
+        # Path-style is required for MinIO and most S3-compatible endpoints.
+        opts[:force_path_style] = s3_force_path_style?
+      elsif !cloud_config['force_path_style'].nil?
+        opts[:force_path_style] = s3_force_path_style?
+      end
+
+      opts
+    end
+
+    def s3_force_path_style?
+      value = cloud_config['force_path_style']
+      return true if value.nil? && cloud_config['endpoint'].present?
+
+      ActiveModel::Type::Boolean.new.cast(value)
+    end
+
     def s3_client
       require_s3!
-      @s3_client ||= begin
-        opts = { region: cloud_config['region'] }
-        if cloud_config['access_key_id'].present?
-          opts[:access_key_id] = cloud_config['access_key_id']
-          opts[:secret_access_key] = cloud_config['secret_access_key']
-        end
-        Aws::S3::Client.new(opts)
-      end
+      @s3_client ||= Aws::S3::Client.new(s3_client_options)
+    end
+
+    # Browser-facing presigns must use a host the client can reach (e.g. localhost),
+    # while Redmine itself talks to the Docker service name (demo-minio).
+    def s3_presign_client
+      require_s3!
+      public_endpoint = cloud_config['public_endpoint'].presence
+      return s3_client if public_endpoint.blank? || public_endpoint == cloud_config['endpoint']
+
+      @s3_presign_client ||= Aws::S3::Client.new(s3_client_options(endpoint: public_endpoint))
     end
 
     def s3_bucket
@@ -346,7 +377,7 @@ module RedmineCloudAttachment
       return nil unless storage_backend == :s3 && cloud_config['bucket'].present?
 
       require_s3!
-      signer = Aws::S3::Presigner.new(client: s3_client)
+      signer = Aws::S3::Presigner.new(client: s3_presign_client)
       signer.presigned_url(
         :get_object,
         bucket: s3_bucket,
