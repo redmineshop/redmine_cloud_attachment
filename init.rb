@@ -5,12 +5,12 @@ require_dependency 'redmine/plugin'
 require_relative 'lib/redmine_cloud_attachment/version'
 
 Redmine::Plugin.register :redmine_cloud_attachment do
-  name 'Redmine Cloud Attachment'
+  name 'Redmine Cloud Attachment (Community)'
   author 'RedmineShop (based on railsfactory/redmine_cloud_attachment_pro)'
-  description 'Store Redmine attachments in AWS S3, Google Cloud Storage, or Azure Blob — with presigned URL support for secure direct downloads.'
+  description 'Community / Free plugin: store Redmine attachments in AWS S3, Google Cloud Storage, or Azure Blob — with presigned URL support for secure direct downloads.'
   version RedmineCloudAttachment::VERSION
-  url 'https://redmineshop.com/products/redmine-cloud-attachment'
-  author_url 'https://redmineshop.com'
+  url 'https://github.com/redmineshop/redmine_cloud_attachment'
+  author_url 'https://github.com/redmineshop'
 end
 
 module RedmineCloudAttachment

@@ -1,1 +1,8 @@
 .DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*service_account*.json
+*credentials*.json
