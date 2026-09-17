@@ -186,4 +186,62 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
     assert_equal 'http://localhost:9000', public_opts[:endpoint]
     assert_equal true, public_opts[:force_path_style]
   end
+
+  def test_usable_cached_temp_diskfile_rejects_empty_files
+    attachment = Attachment.new(
+      filename: 'test.txt',
+      disk_filename: 's3_test_123.txt'
+    )
+    empty = Tempfile.new(['empty-cache', '.txt'])
+    empty.close
+    attachment.instance_variable_set(:@cached_temp_diskfile, empty.path)
+
+    assert_nil attachment.send(:usable_cached_temp_diskfile)
+
+    File.write(empty.path, 'cached-bytes')
+    assert_equal empty.path, attachment.send(:usable_cached_temp_diskfile)
+  ensure
+    File.unlink(empty.path) if empty && File.exist?(empty.path)
+  end
+
+  def test_cloud_key_strips_storage_prefix_from_filename_only
+    attachment = Attachment.new(
+      filename: 'test.txt',
+      disk_filename: 's3_abc_test.txt',
+      created_on: Time.utc(2026, 9, 17)
+    )
+    attachment.define_singleton_method(:cloud_config) do
+      { 'path' => 'redmine/s3_files' }
+    end
+
+    assert_equal 'redmine/s3_files/2026/09/abc_test.txt', attachment.send(:cloud_key)
+  end
+
+  def test_cloud_filename_uses_basename_only
+    attachment = Attachment.new(
+      filename: '../../etc/passwd',
+      disk_filename: nil
+    )
+    name = attachment.send(:cloud_filename)
+    assert_equal name, File.basename(name)
+    assert_match(/_passwd\z/, name)
+    assert_no_match(%r{\.\./}, name)
+  end
+
+  def test_sanitize_presigned_url_allows_only_http_https
+    attachment = Attachment.new(disk_filename: 's3_test.txt')
+
+    assert_equal(
+      'https://bucket.s3.amazonaws.com/key',
+      attachment.send(:sanitize_presigned_url, 'https://bucket.s3.amazonaws.com/key')
+    )
+    assert_equal(
+      'http://localhost:9000/bucket/key',
+      attachment.send(:sanitize_presigned_url, 'http://localhost:9000/bucket/key')
+    )
+    assert_nil attachment.send(:sanitize_presigned_url, 'javascript:alert(1)')
+    assert_nil attachment.send(:sanitize_presigned_url, 'data:text/html,hi')
+    assert_nil attachment.send(:sanitize_presigned_url, 'https://')
+    assert_nil attachment.send(:sanitize_presigned_url, '')
+  end
 end

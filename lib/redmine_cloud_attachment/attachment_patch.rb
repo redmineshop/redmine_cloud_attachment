@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'uri'
 require_dependency 'attachment'
 
 module RedmineCloudAttachment
@@ -17,14 +18,19 @@ module RedmineCloudAttachment
     def direct_download_url(expires_in = 15.minutes)
       return nil unless cloud_diskfile?
 
-      case storage_backend
-      when :s3
-        s3_presigned_url(expires_in)
-      when :gcs
-        gcs_presigned_url(expires_in)
-      when :azure
-        azure_presigned_url(expires_in)
-      end
+      url =
+        case storage_backend
+        when :s3
+          s3_presigned_url(expires_in)
+        when :gcs
+          gcs_presigned_url(expires_in)
+        when :azure
+          azure_presigned_url(expires_in)
+        else
+          nil
+        end
+
+      sanitize_presigned_url(url)
     end
 
     def files_to_final_location
@@ -46,7 +52,8 @@ module RedmineCloudAttachment
         "[CloudAttachment] diskfile() called for cloud attachment #{id} — prefer direct_download_url()"
       )
 
-      return @cached_temp_diskfile if @cached_temp_diskfile && File.exist?(@cached_temp_diskfile)
+      cached = usable_cached_temp_diskfile
+      return cached if cached
 
       cleanup_temp_file
 
@@ -54,7 +61,15 @@ module RedmineCloudAttachment
       @temp_file_obj.binmode
       begin
         download_from_cloud(@temp_file_obj)
+        @temp_file_obj.flush
         @temp_file_obj.rewind
+        unless nonempty_file?(@temp_file_obj.path)
+          Rails.logger.error(
+            "[CloudAttachment] Cloud download produced an empty file for attachment #{id}"
+          )
+          cleanup_temp_file
+          return super
+        end
         @cached_temp_diskfile = @temp_file_obj.path
       rescue StandardError => e
         Rails.logger.error(
@@ -214,7 +229,7 @@ module RedmineCloudAttachment
 
     def build_upload_key
       stamp = (created_on || Time.current).strftime('%Y/%m')
-      base = disk_filename.presence || "#{SecureRandom.hex}_#{filename}"
+      base = disk_filename.presence || "#{SecureRandom.hex}_#{safe_attachment_basename}"
       File.join(cloud_base_path, stamp, base)
     end
 
@@ -255,17 +270,59 @@ module RedmineCloudAttachment
     end
 
     def cloud_filename
-      disk_filename.presence || "#{SecureRandom.hex}_#{filename}"
+      disk_filename.presence || "#{SecureRandom.hex}_#{safe_attachment_basename}"
     end
 
+    # Object key in the bucket. Strip the s3_/gcs_/azure_ marker from the
+    # filename only — never from the full path (a prefix in `path:` used to
+    # produce the wrong key via String#sub).
     def cloud_key
+      name = cloud_filename.to_s
       prefix = "#{storage_backend}_"
-      key = File.join(
+      if cloud_diskfile? && name.start_with?(prefix)
+        name = name.delete_prefix(prefix)
+      end
+      File.join(
         cloud_base_path,
         (created_on || Time.current).strftime('%Y/%m'),
-        cloud_filename
+        name
       )
-      cloud_diskfile? ? key.sub(prefix, '') : key
+    end
+
+    def safe_attachment_basename
+      File.basename(filename.to_s)
+    end
+
+    # Reuse a downloaded tempfile only when it exists and has content.
+    # Empty leftovers (failed/partial downloads) must be re-fetched.
+    def usable_cached_temp_diskfile
+      path = @cached_temp_diskfile
+      return path if nonempty_file?(path)
+
+      nil
+    end
+
+    def nonempty_file?(path)
+      path.present? && File.file?(path) && File.size(path).positive?
+    end
+
+    # Presigned URLs are sent to browsers (redirect + <img src>). Only http(s)
+    # with a host are safe to expose; reject javascript:/data: and parse errors.
+    def sanitize_presigned_url(url)
+      return nil if url.blank?
+
+      uri = URI.parse(url.to_s)
+      return url if %w[http https].include?(uri.scheme) && uri.host.present?
+
+      Rails.logger.error(
+        "[CloudAttachment] Refusing non-http(s) presigned URL for attachment #{id}"
+      )
+      nil
+    rescue URI::InvalidURIError
+      Rails.logger.error(
+        "[CloudAttachment] Refusing unparseable presigned URL for attachment #{id}"
+      )
+      nil
     end
 
     def cloud_config

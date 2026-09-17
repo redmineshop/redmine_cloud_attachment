@@ -1,8 +1,7 @@
 # Load the Redmine helper
 require_relative '../../../test/test_helper'
 
-# Ensure plugin is loaded for tests - không cần load init.rb vì Redmine sẽ auto-load plugins
-# require_relative '../init'
+# Redmine auto-loads plugins; do not require init.rb here.
 
 # Helper methods for cloud attachment tests
 module CloudAttachmentTestHelper
