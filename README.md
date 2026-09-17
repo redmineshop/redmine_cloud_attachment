@@ -1,12 +1,17 @@
 # Redmine Cloud Attachment — S3, GCS & Azure Storage for Redmine
 
-[![Community · Free forever](https://img.shields.io/badge/Community-Free%20forever-brightgreen)](https://redmineshop.com/products/redmine-cloud-attachment)
-[![Redmine 5.x/6.x](https://img.shields.io/badge/Redmine-5.x%20%7C%206.x-blue)](https://redmineshop.com/docs/compatibility)
+[![Community · Free forever](https://img.shields.io/badge/Community-Free%20forever-brightgreen)](https://github.com/redmineshop/redmine_cloud_attachment)
+[![Redmine 5.x/6.x](https://img.shields.io/badge/Redmine-5.x%20%7C%206.x-blue)](https://github.com/redmineshop/redmine_cloud_attachment)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE.txt)
+[![CI](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml/badge.svg)](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml)
 
-**Download via RedmineShop:** [redmineshop.com/products/redmine-cloud-attachment](https://redmineshop.com/products/redmine-cloud-attachment)
+**Last maintained: 2026-09-17**
+
+**Community / Free** plugin (not Pro). **Source on GitHub:** [github.com/redmineshop/redmine_cloud_attachment](https://github.com/redmineshop/redmine_cloud_attachment)
 
 Store Redmine issue attachments in cloud object storage — AWS S3, Google Cloud Storage, or Azure Blob — instead of local disk. Supports presigned URLs for secure, time-limited direct download links that bypass your Redmine server.
+
+Learn more (secondary): [product page](https://redmineshop.com/products/redmine-cloud-attachment).
 
 ## Features
 
@@ -16,9 +21,21 @@ Store Redmine issue attachments in cloud object storage — AWS S3, Google Cloud
 - Configurable via `config/configuration.yml` (no Admin UI settings page)
 - Compatible with Redmine's built-in attachment management UI
 
+## Compatibility
+
+This maintain pass ran **Ruby 3.2 syntax checks** (`ruby -c`) on every `.rb` file. A full Redmine application matrix was **not** re-executed here.
+
+| Target | Declared by this plugin | Verified in this pass |
+| --- | --- | --- |
+| Redmine 5.0.x | Yes (prior releases / README) | Not re-tested against a live Redmine 5 |
+| Redmine 6.x | Yes (prior releases / README) | Not re-tested against a live Redmine 6 |
+| Ruby 3.0+ | Yes | CI syntax job uses **Ruby 3.2** |
+
+Please open a [GitHub Issue](https://github.com/redmineshop/redmine_cloud_attachment/issues) if you confirm a specific Redmine/Ruby pair.
+
 ## Requirements
 
-- Redmine 5.0.x or 6.x
+- Redmine 5.0.x or 6.x (declared; see table above)
 - Ruby 3.0+
 - AWS S3 bucket (+ IAM credentials or instance profile), GCS bucket, or Azure Storage account
 
@@ -28,18 +45,21 @@ Grant `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` on your attachments 
 
 ## Installation
 
-Download the SHA256-verified package from [RedmineShop](https://redmineshop.com/products/redmine-cloud-attachment), then:
+Clone this Community plugin from GitHub into Redmine's `plugins/` directory:
 
 ```bash
-# From your Redmine root
-tar -xzf redmine_cloud_attachment-1.2.2.tar.gz -C plugins/
+cd /path/to/redmine/plugins
+git clone https://github.com/redmineshop/redmine_cloud_attachment.git
+cd /path/to/redmine
 bundle install
 # Restart your Redmine server
 ```
 
-See the [install guide](https://redmineshop.com/docs/cloud-attachment-install) for full instructions.
+Optional background: [install guide](https://redmineshop.com/docs/cloud-attachment-install).
 
-### Upgrading from `redmine_cloud_attachment_pro` (≤ 1.1.x)
+### Upgrading from the old `redmine_cloud_attachment_pro` folder (≤ 1.1.x)
+
+The Community plugin id is `redmine_cloud_attachment`. If you still have the pre-rename folder:
 
 ```bash
 mv plugins/redmine_cloud_attachment_pro plugins/redmine_cloud_attachment
