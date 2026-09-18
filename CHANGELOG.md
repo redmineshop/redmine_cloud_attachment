@@ -5,23 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.3] — 2026-09-17
+## Unreleased
 
-### Fixed
+### Added
 
-- Treat empty cached tempfiles as invalid and re-download (clean re-implementation of the useful part of stale PR #1)
-- Strip `s3_` / `gcs_` / `azure_` only from the object filename, not from the full key path
-
-### Security
-
-- Reject non-http(s) presigned URLs before they are redirected or exposed in the API / image view
-- Use `File.basename` when deriving an object name from the upload filename
-- Ignore common credential file patterns in `.gitignore`
+- Plugin quality harness notes and README screenshot slots (demo Redmine + MinIO E2E; not a Redmine version matrix)
 
 ### Changed
 
-- GitHub-first Community install docs; plugin metadata URL points at this repository
-- CI: Ruby 3.2 `ruby -c` syntax check on push/PR
+- README: **Last maintained** 2026-09-18 and public-safe quality-harness wording (no relative monorepo doc link)
 
 ## [1.2.2] — 2026-07-24
 
@@ -82,7 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thumbnail generation for cloud-stored images
 - Compatible with Redmine 5.0.x and 6.x
 
-[1.2.3]: https://github.com/redmineshop/redmine_cloud_attachment/compare/v1.2.2...HEAD
 [1.2.2]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.2.2
 [1.2.1]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.2.1
 [1.2.0]: https://github.com/redmineshop/redmine_cloud_attachment/releases/tag/v1.2.0

@@ -4,6 +4,8 @@
 [![Redmine 5.x/6.x](https://img.shields.io/badge/Redmine-5.x%20%7C%206.x-blue)](https://redmineshop.com/docs/compatibility)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE.txt)
 
+**Last maintained:** 2026-09-18
+
 **Source on GitHub:** [github.com/redmineshop/redmine_cloud_attachment](https://github.com/redmineshop/redmine_cloud_attachment)
 
 Store Redmine issue attachments in cloud object storage — AWS S3, Google Cloud Storage, or Azure Blob — instead of local disk. Supports presigned URLs for secure, time-limited direct download links that bypass your Redmine server.
@@ -111,7 +113,7 @@ Administration → Plugins on demo Redmine (plugin quality harness). There is **
 
 Issue Files field after choosing a file, and the attachments list after save: [screenshots/issue-edit-files.png](screenshots/issue-edit-files.png), [screenshots/issue-attachment.png](screenshots/issue-attachment.png).
 
-Refresh from the RedmineShop monorepo: `./demo/scripts/run-plugin-e2e.sh`.
+Screenshot refresh is a private-monorepo Playwright job (`demo/scripts/run-plugin-e2e.sh`), not something a public clone can run.
 
 ## Tests
 
@@ -121,17 +123,21 @@ Unit + integration tests live under `test/` (MiniTest). They are **not** a Redmi
 PLUGIN_NAME=redmine_cloud_attachment ./demo/scripts/run-sso-plugin-tests.sh
 ```
 
+The demo-stack command above is **monorepo only**. A public clone of this plugin does not ship `demo/scripts/`.
+
 ### Quality harness (demo + E2E)
+
+The Playwright E2E harness lives in the **private** RedmineShop monorepo (`docker-compose.demo.yml` + `demo/scripts/run-plugin-e2e.sh`). This public GitHub repo is the plugin only — it does not ship that compose file, and a public clone cannot open monorepo docs such as `docs/plugin-quality-harness.md`. There is no public-safe copy of that harness guide.
+
+Install and smoke this plugin on your own Redmine: [cloud attachment install](https://redmineshop.com/docs/cloud-attachment-install).
 
 | Bar | Status |
 | --- | --- |
 | Automated tests beyond `ruby -c` | **Verified** — `test/unit` + `test/integration` in this repo (Playwright is a separate row) |
-| Installed + enabled on demo Redmine | **Verified** — mounted via `demo/plugins/` on `docker-compose.demo.yml`; `demo/scripts/prepare-demo-harness.sh` seeds `plugin-qa` and checks `storage=s3` (MinIO) |
+| Installed + enabled on demo Redmine | **Verified** — mounted via `demo/plugins/` on the monorepo demo stack; seed prepares `plugin-qa` and checks `storage=s3` (MinIO) |
 | E2E primary happy path | **Verified** — Playwright `demo/e2e/tests/redmine_cloud_attachment.spec.js` (plugin row, attach file, download 302 to MinIO) on the demo stack |
 | UI screenshot in README | **Verified** — `screenshots/{admin-plugins,issue-edit-files,issue-attachment}.png` from that spec |
 | Redmine 5.1 / 6.x matrix | **Declared / untested** — this harness is one demo image, not a QA matrix |
-
-How to run: [docs/plugin-quality-harness.md](../../../../docs/plugin-quality-harness.md).
 
 ## Troubleshooting
 
