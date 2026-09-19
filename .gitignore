@@ -1,8 +1,13 @@
 .DS_Store
+*.swp
+*~
 .env
 .env.*
 !.env.example
 *.pem
-*.p12
-*service_account*.json
-*credentials*.json
+*.key
+vendor/bundle
+.bundle/
+log/
+tmp/
+coverage/

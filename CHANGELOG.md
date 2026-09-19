@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- README: **Last maintained** 2026-09-18 and public-safe quality-harness wording (no relative monorepo doc link)
+- README: **Last maintained** 2026-09-18, embed all three harness screenshots, and public-safe harness wording (no clickable private-monorepo URLs)
 
 ## [1.2.2] — 2026-07-24
 
