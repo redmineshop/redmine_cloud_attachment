@@ -108,17 +108,17 @@ Do not treat catalog versions as tested cells. This plugin does not declare `req
 
 ## Screenshot
 
-Administration → Plugins on demo Redmine. There is **no** Configure link — storage is `config/configuration.yml` (MinIO on the demo stack):
+Issue page after a file is stored in cloud storage (demo Redmine + MinIO). The attachment row is the standard Redmine Files list. This plugin does not print the bucket or provider on the issue, and it has **no** Administration → Plugins → Configure screen — storage is `config/configuration.yml`, so there is no settings screenshot (keys stay out of the UI).
+
+![Issue with a cloud-stored attachment](screenshots/issue-attachment.png)
+
+Issue edit page with a file chosen, before submit:
+
+![Issue edit with a file queued](screenshots/issue-edit-files.png)
+
+Administration → Plugins (no Configure link):
 
 ![Plugin listed under Administration → Plugins](screenshots/admin-plugins.png)
-
-Issue Files field after choosing a file:
-
-![Issue edit Files field](screenshots/issue-edit-files.png)
-
-Attachments list after save:
-
-![Issue attachments after upload](screenshots/issue-attachment.png)
 
 Screenshot refresh lives in the private `redmineshop/redmineshop` harness. A public clone cannot run it.
 
@@ -145,7 +145,7 @@ Install and smoke this plugin on your own Redmine: [cloud attachment install](ht
 | Automated tests beyond `ruby -c` | **Verified** — `test/unit` + `test/integration` in this repo (Playwright is a separate row) |
 | E2E primary happy path | **Verified** — Playwright on that private harness (plugin row, attach file, download 302 to MinIO) |
 | Installed + enabled on demo Redmine | **Verified** — mounted via `demo/plugins/` on the private monorepo demo stack; seed prepares `plugin-qa` and checks `storage=s3` (MinIO) |
-| UI screenshot in README | **Verified** — `screenshots/{admin-plugins,issue-edit-files,issue-attachment}.png` from that spec |
+| UI screenshot in README | **Verified** — `screenshots/{issue-attachment,issue-edit-files,admin-plugins}.png` from that spec (full Redmine pages). No settings screen to capture. |
 | Redmine 5.1 / 6.x matrix | **Declared / untested** — this harness is one demo image, not a QA matrix |
 
 ## Troubleshooting
