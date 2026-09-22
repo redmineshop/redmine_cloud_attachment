@@ -1,15 +1,16 @@
 # Redmine Cloud Attachment — S3, GCS & Azure Storage for Redmine
 
 [![Community · Free forever](https://img.shields.io/badge/Community-Free%20forever-brightgreen)](https://redmineshop.com/products/redmine-cloud-attachment)
-[![Redmine 5.x/6.x](https://img.shields.io/badge/Redmine-5.x%20%7C%206.x-blue)](https://redmineshop.com/docs/compatibility)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE.txt)
 [![CI](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml/badge.svg)](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml)
 
-**Last maintained:** 2026-09-18
+**Last maintained:** 2026-09-22
 
 **Source on GitHub:** [github.com/redmineshop/redmine_cloud_attachment](https://github.com/redmineshop/redmine_cloud_attachment)
 
-Store Redmine issue attachments in cloud object storage — AWS S3, Google Cloud Storage, or Azure Blob — instead of local disk. Supports presigned URLs for secure, time-limited direct download links that bypass your Redmine server.
+S3 MinIO GCS Azure attachments for Redmine.
+
+Store Redmine issue attachments in cloud object storage — AWS S3, MinIO, Google Cloud Storage, or Azure Blob — instead of local disk. Supports presigned URLs for secure, time-limited direct download links that bypass your Redmine server.
 
 ## Features
 
@@ -40,6 +41,8 @@ cd /path/to/redmine
 bundle install
 # Restart your Redmine server
 ```
+
+After restart, open **Administration → Plugins** and confirm **Redmine Cloud Attachment** is listed. There is no Configure link. Storage is `config/configuration.yml`.
 
 See the [install guide](https://redmineshop.com/docs/cloud-attachment-install) for full instructions.
 
@@ -98,13 +101,15 @@ presigned download URLs are signed against that host instead (so redirects work 
 
 ## Compatibility
 
-| Redmine | Ruby | Database | Status |
-|---------|------|----------|--------|
-| 6.x     | 3.2+ | MySQL 8 / PostgreSQL | Targeted — **untested** (no published QA matrix) |
-| 5.1.x   | 3.1+ | MySQL 8 / PostgreSQL | Targeted — **untested** |
-| 5.0.x   | 3.0+ | MySQL 8 / PostgreSQL | Targeted — **untested** |
+`init.rb` does not set `requires_redmine`. Declared rows match the Requirements section: 5.0.x through 6.x. Redmine 7.0 is not a claimed target. Tested means a run pinned to that Redmine line. The demo image is official `redmine:latest` (tag not pinned), so a demo boot is not a pass for a specific row.
 
-Do not treat catalog versions as tested cells. This plugin does not declare `requires_redmine` in `init.rb`.
+| Redmine | Declared | Tested |
+|---------|----------|--------|
+| 5.0.x   | Yes      | No — unverified |
+| 5.1.x   | Yes      | No — unverified |
+| 6.0.x   | Yes      | No — unverified |
+| 6.1.x   | Yes      | No — unverified |
+| 7.0.x   | No       | No — unverified |
 
 ## Screenshot
 
@@ -120,33 +125,26 @@ Attachments list after save:
 
 ![Issue attachments after upload](screenshots/issue-attachment.png)
 
-Screenshot refresh lives in the private `redmineshop/redmineshop` harness. A public clone cannot run it.
+Images are crops from a demo Redmine with MinIO. The Redmine version in the capture was not recorded. `issue-attachment.png` is a short header crop; a full attachments list is still TODO. A full-page screenshot is still TODO.
 
 ## Tests
 
-Unit + integration tests live under `test/` (MiniTest). They are **not** a Redmine 5.1 / 6.x matrix.
+Unit + integration tests live under `test/` (MiniTest). They do not boot Redmine 5.0, 5.1, 6.0, 6.1, or 7.0.
 
-On the private `redmineshop/redmineshop` demo stack (not this public clone):
+Public GitHub Actions (`.github/workflows/ci.yml`) runs Ruby syntax checks only (`ruby -c`).
+
+Run them from a Redmine tree with this plugin installed:
 
 ```bash
-PLUGIN_NAME=redmine_cloud_attachment ./demo/scripts/run-sso-plugin-tests.sh
+bundle exec rake redmine:plugins:test NAME=redmine_cloud_attachment RAILS_ENV=test
 ```
 
-A public clone of this plugin does not ship `demo/scripts/`.
+## Limits
 
-### Quality harness (demo + E2E)
-
-E2E lives in the **private** `redmineshop/redmineshop` harness (`docker-compose.demo.yml` + Playwright). This public GitHub repo is the plugin only — it does not ship that compose file, and a public clone cannot open private harness docs.
-
-Install and smoke this plugin on your own Redmine: [cloud attachment install](https://redmineshop.com/docs/cloud-attachment-install).
-
-| Bar | Status |
-| --- | --- |
-| Automated tests beyond `ruby -c` | **Verified** — `test/unit` + `test/integration` in this repo (Playwright is a separate row) |
-| E2E primary happy path | **Verified** — Playwright on that private harness (plugin row, attach file, download 302 to MinIO) |
-| Installed + enabled on demo Redmine | **Verified** — mounted via `demo/plugins/` on the private monorepo demo stack; seed prepares `plugin-qa` and checks `storage=s3` (MinIO) |
-| UI screenshot in README | **Verified** — `screenshots/{admin-plugins,issue-edit-files,issue-attachment}.png` from that spec |
-| Redmine 5.1 / 6.x matrix | **Declared / untested** — this harness is one demo image, not a QA matrix |
+- No **Administration → Plugins → Configure** screen. All storage settings are in `config/configuration.yml`.
+- Presigned download URLs expire (default 15 minutes). They are not permanent links.
+- A mis-set `endpoint` or `public_endpoint` breaks downloads inside Docker. See the MinIO example above.
+- Install notes: [cloud attachment install](https://redmineshop.com/docs/cloud-attachment-install).
 
 ## Troubleshooting
 
