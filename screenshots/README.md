@@ -6,6 +6,7 @@ Refresh is **private-monorepo only** (`redmineshop/redmineshop` harness). A publ
 
 Output:
 
-- `admin-plugins.png` — Administration → Plugins row (no Configure link; config is YAML)
-- `issue-edit-files.png` — issue edit Files field with the harness fixture queued
-- `issue-attachment.png` — issue attachments list after upload (download 302s to MinIO)
+- `issue-attachment.png` — full issue page after upload (subject + attachment row). No bucket label in the UI.
+- `issue-edit-files.png` — full issue edit page with the harness PNG queued
+- `admin-plugins.png` — Administration → Plugins (no Configure link; config is YAML)
+- `settings-storage.png` — not captured. There is no plugin settings screen; rendering `configuration.yml` would show MinIO keys.
