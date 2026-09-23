@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE.txt)
 [![CI](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml/badge.svg)](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml)
 
-**Last maintained:** 2026-09-18
+**Last maintained:** 2026-09-24
 
 **Source on GitHub:** [github.com/redmineshop/redmine_cloud_attachment](https://github.com/redmineshop/redmine_cloud_attachment)
 
@@ -95,6 +95,9 @@ production:
 
 `endpoint` is used for put/get/delete from the Redmine process. When `public_endpoint` is set,
 presigned download URLs are signed against that host instead (so redirects work outside Docker).
+A download redirect is sent only when that URL's host is the configured storage host. Any other
+host falls back to sending the file through Redmine. Presigned link lifetime is clamped to
+between 1 minute and 7 days.
 
 ## Compatibility
 
@@ -124,7 +127,7 @@ Screenshot refresh lives in the private `redmineshop/redmineshop` harness. A pub
 
 ## Tests
 
-Unit + integration tests live under `test/` (MiniTest). They are **not** a Redmine 5.1 / 6.x matrix.
+Unit + integration tests live under `test/` (MiniTest). They cover object keys, presigned-host checks, provider config validation, log redaction, and thumbnail size bounds. They are **not** a Redmine 5.1 / 6.x matrix.
 
 On the private `redmineshop/redmineshop` demo stack (not this public clone):
 
@@ -142,11 +145,11 @@ Install and smoke this plugin on your own Redmine: [cloud attachment install](ht
 
 | Bar | Status |
 | --- | --- |
-| Automated tests beyond `ruby -c` | **Verified** — `test/unit` + `test/integration` in this repo (Playwright is a separate row) |
-| E2E primary happy path | **Verified** — Playwright on that private harness (plugin row, attach file, download 302 to MinIO) |
-| Installed + enabled on demo Redmine | **Verified** — mounted via `demo/plugins/` on the private monorepo demo stack; seed prepares `plugin-qa` and checks `storage=s3` (MinIO) |
-| UI screenshot in README | **Verified** — `screenshots/{issue-attachment,issue-edit-files,admin-plugins}.png` from that spec (full Redmine pages). No settings screen to capture. |
-| Redmine 5.1 / 6.x matrix | **Declared / untested** — this harness is one demo image, not a QA matrix |
+| Automated tests beyond `ruby -c` | GitHub Actions runs `test/unit/storage_security_test.rb` (object keys, presign hosts, provider config, log redaction, thumbnail bounds). Controller and integration tests need a Redmine test database and are not in that workflow. |
+| E2E primary happy path | Playwright spec in the private monorepo attaches a file and expects download `302` to port 9000. This repository's workflow does not run Playwright. |
+| Installed + enabled on demo Redmine | The demo stack mounts this plugin from `demo/plugins/`. Enabling it is not part of this repository's workflow. |
+| UI screenshot in README | `screenshots/issue-attachment.png`, `screenshots/issue-edit-files.png`, `screenshots/admin-plugins.png` |
+| Redmine 5.1 / 6.x matrix | **Declared / untested** — one demo image is not a QA matrix |
 
 ## Troubleshooting
 

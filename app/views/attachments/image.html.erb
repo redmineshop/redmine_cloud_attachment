@@ -1,11 +1,9 @@
 <%= render :layout => 'layouts/file' do %>
-  <% 
-    # Use direct cloud URL if available, otherwise fall back to normal path
-    image_path = if @direct_url.present?
-                   @direct_url
-                 else
-                   download_named_attachment_path(@attachment, @attachment.filename)
-                 end
-  %>
+  <% direct = @direct_url.to_s %>
+  <% image_path = if direct.match?(/\Ahttps?:\/\/[^\s]+\z/i)
+                    direct
+                  else
+                    download_named_attachment_path(@attachment, @attachment.filename)
+                  end %>
   <%= render :partial => 'common/image', :locals => {:path => image_path, :alt => @attachment.filename} %>
-<% end %> 
+<% end %>

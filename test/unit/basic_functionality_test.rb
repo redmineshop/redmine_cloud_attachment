@@ -91,16 +91,26 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
     assert_nil local_attachment.direct_download_url
   end
 
-  def test_readable_method_for_cloud_attachments
+  def test_readable_is_false_without_a_bucket
     cloud_attachment = Attachment.new(
       filename: 'test.txt',
       disk_filename: 's3_test_123.txt'
     )
-    
-    # Should not call diskfile() for readable check on cloud attachments
-    # Instead should check cloud configuration
-    result = cloud_attachment.readable?
-    assert [true, false].include?(result), "readable? should return boolean"
+    cloud_attachment.define_singleton_method(:cloud_config) { {} }
+
+    assert_equal false, cloud_attachment.readable?
+  end
+
+  def test_readable_rejects_partial_s3_credentials
+    cloud_attachment = Attachment.new(
+      filename: 'test.txt',
+      disk_filename: 's3_test_123.txt'
+    )
+    cloud_attachment.define_singleton_method(:cloud_config) do
+      { 'bucket' => 'redmine-attachments', 'access_key_id' => 'only-the-id' }
+    end
+
+    assert_equal false, cloud_attachment.readable?
   end
 
   def test_local_readable_delegates_to_core_via_super

@@ -33,9 +33,10 @@ production:
     bucket: <%= ENV["REDMINE_FILES_ATTACHEMENT_S3_BUCKET"] %>
     region: <%= ENV["AWS_REGION"] %>
     path: <%= ENV["AWS_PATH"] || "redmine/files" %>
-    # MinIO / S3-compatible (optional):
+    # http(s) URL with no embedded userinfo. When public_endpoint is set, browsers
+    # are redirected only to that host. Presigned URL lifetime is minutes, clamped to 1..10080.
     # endpoint: "http://minio:9000"
-    # public_endpoint: "https://files.example.com"  # host browsers can reach
+    # public_endpoint: "https://files.example.com"
     # force_path_style: true
   gcs:
     project_id: "your-gcp-project"
@@ -50,7 +51,6 @@ production:
     # access_key: "your-storage-access-key"
     container: "your-container-name"
     path: "redmine/files"
-  # Optional plugin settings (legacy key cloud_attachment_pro also accepted):
   cloud_attachment:
-    # Presigned URL lifetime in minutes (default 15)
+    # Presigned URL lifetime in minutes (default 15, clamped to 1..10080)
     presigned_url_expires_in: 15

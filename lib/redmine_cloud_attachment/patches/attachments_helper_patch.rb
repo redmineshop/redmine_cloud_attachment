@@ -8,7 +8,7 @@ module RedmineCloudAttachment
 
         return unless attachment.respond_to?(:cloud_diskfile?) && attachment.cloud_diskfile?
 
-        direct_url = attachment.direct_download_url(attachment.cloud_expiry_time)
+        direct_url = attachment.respond_to?(:safe_direct_url) ? attachment.safe_direct_url : nil
         return unless direct_url
 
         api.direct_content_url direct_url

@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Object keys drop `..` and strip the `s3_` / `gcs_` / `azure_` marker only from the filename, so a storage prefix that itself contains that marker still points at the uploaded object
+- Presigned download redirects stay on the configured storage host. Off-host URLs are not sent to the browser; Redmine serves the file instead
+- Presigned URL lifetime is clamped to between 1 minute and 7 days
+- Cloud error logs redact signed-URL query strings and access keys
+- Bulk-download size errors return to the container URL instead of the Referer header
+
 ### Added
 
-- Plugin quality harness notes and README screenshot slots (demo Redmine + MinIO E2E; not a Redmine version matrix)
+- GitHub Actions runs `test/unit/storage_security_test.rb` in addition to `ruby -c`
 
 ### Changed
 
-- README: Last maintained date and screenshots. E2E is not in this public repo.
+- README describes presigned-host behavior and leaves the Redmine 5.x / 6.x matrix declared/untested
 
 ## [1.2.2] — 2026-07-24
 

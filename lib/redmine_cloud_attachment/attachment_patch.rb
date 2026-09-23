@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_dependency 'attachment'
+require_relative 'storage_security'
 
 module RedmineCloudAttachment
   # Prepended onto Attachment so `super` reaches Redmine core methods.
@@ -27,6 +28,20 @@ module RedmineCloudAttachment
       end
     end
 
+    # Presigned URL that is safe to put in a browser redirect or HTML.
+    # Off-host, non-http, or path-traversing URLs return nil so the caller
+    # can stream the object through Redmine instead.
+    def safe_direct_url(expires_in = nil)
+      url = direct_download_url(expires_in || cloud_expiry_time)
+      return nil if url.nil? || url.to_s.empty?
+
+      bucket = storage_backend == :azure ? cloud_config['container'] : cloud_config['bucket']
+      origins = StorageSecurity.presign_origins(storage_backend, cloud_config)
+      return nil unless StorageSecurity.presigned_url_allowed?(url, origins, bucket: bucket)
+
+      url
+    end
+
     def files_to_final_location
       return super if configured_storage == :local
       return unless @temp_file
@@ -50,15 +65,24 @@ module RedmineCloudAttachment
 
       cleanup_temp_file
 
-      @temp_file_obj = Tempfile.create(['redmine', File.extname(cloud_key.to_s)])
+      key = cloud_key
+      if key.nil?
+        Rails.logger.error(
+          "[CloudAttachment] Refusing cloud read for attachment #{id}: object key is not safe"
+        )
+        return super
+      end
+
+      @temp_file_obj = Tempfile.create(['redmine', StorageSecurity.safe_temp_suffix(filename)])
       @temp_file_obj.binmode
       begin
-        download_from_cloud(@temp_file_obj)
+        download_from_cloud(@temp_file_obj, key)
         @temp_file_obj.rewind
         @cached_temp_diskfile = @temp_file_obj.path
       rescue StandardError => e
         Rails.logger.error(
-          "[CloudAttachment] Fallback to local for attachment #{id} due to cloud download error: #{e.message}"
+          "[CloudAttachment] Fallback to local for attachment #{id} due to cloud download error: " \
+          "#{StorageSecurity.sanitize_log_text(e.message)}"
         )
         cleanup_temp_file
         return super
@@ -70,10 +94,14 @@ module RedmineCloudAttachment
     def delete_from_cloud
       return unless cloud_diskfile?
 
-      delete_from_backend(cloud_key)
+      key = cloud_key
+      return if key.nil?
+
+      delete_from_backend(key)
     rescue StandardError => e
       Rails.logger.error(
-        "[CloudAttachment] Failed to delete #{cloud_key} from cloud for attachment #{id}: #{e.message}"
+        "[CloudAttachment] Failed to delete cloud object for attachment #{id}: " \
+        "#{StorageSecurity.sanitize_log_text(e.message)}"
       )
     end
 
@@ -83,12 +111,15 @@ module RedmineCloudAttachment
 
       case storage_backend
       when :s3
-        cloud_config['bucket'].present? &&
-          (cloud_config['access_key_id'].present? || iam_role_credentials?)
+        StorageSecurity.safe_container_name?(cloud_config['bucket']) &&
+          StorageSecurity.s3_credentials_ok?(cloud_config) &&
+          StorageSecurity.valid_http_endpoint?(cloud_config['endpoint'])
       when :gcs
-        cloud_config['bucket'].present? && cloud_config['project_id'].present?
+        StorageSecurity.safe_container_name?(cloud_config['bucket']) &&
+          cloud_config['project_id'].present?
       when :azure
-        cloud_config['container'].present? && azure_account_name.present?
+        StorageSecurity.safe_container_name?(cloud_config['container']) &&
+          StorageSecurity.azure_credentials_ok?(cloud_config)
       else
         false
       end
@@ -101,14 +132,7 @@ module RedmineCloudAttachment
 
       return unless thumbnailable? && readable?
 
-      size = options[:size].to_i
-      if size > 0
-        size = (size / 50.0).ceil * 50
-        size = 800 if size > 800
-      else
-        size = Setting.thumbnails_size.to_i
-      end
-      size = 100 unless size > 0
+      size = StorageSecurity.thumbnail_pixel_size(options[:size], Setting.thumbnails_size)
       target = thumbnail_path(size)
       return target if File.exist?(target)
 
@@ -120,7 +144,8 @@ module RedmineCloudAttachment
       rescue StandardError => e
         cleanup_after_thumbnail
         logger&.error(
-          "[CloudAttachment] Thumbnail failed for cloud attachment #{id}: #{e.message}"
+          "[CloudAttachment] Thumbnail failed for cloud attachment #{id}: " \
+          "#{StorageSecurity.sanitize_log_text(e.message)}"
         )
         nil
       end
@@ -129,11 +154,8 @@ module RedmineCloudAttachment
     def cloud_expiry_time
       plugin_cfg = Redmine::Configuration['cloud_attachment'] ||
                    Redmine::Configuration['cloud_attachment_pro']
-      if plugin_cfg && plugin_cfg['presigned_url_expires_in']
-        plugin_cfg['presigned_url_expires_in'].to_i.minutes
-      else
-        15.minutes
-      end
+      raw = plugin_cfg && plugin_cfg['presigned_url_expires_in']
+      StorageSecurity.expiry_minutes(raw).minutes
     end
 
     def cloud_diskfile?
@@ -165,6 +187,9 @@ module RedmineCloudAttachment
     def upload_and_digest(temp_file, sha)
       path = materialize_upload_path(temp_file, sha)
       key = build_upload_key
+      if key.nil?
+        raise StorageSecurity::ConfigurationError, 'Refusing to store an unsafe object key'
+      end
 
       case storage_backend
       when :s3
@@ -193,7 +218,7 @@ module RedmineCloudAttachment
         if temp_file.respond_to?(:path) && temp_file.path.present? && File.file?(temp_file.path)
           temp_file.path
         else
-          tmp = Tempfile.new(['redmine-upload', File.extname(filename.to_s)])
+          tmp = Tempfile.new(['redmine-upload', StorageSecurity.safe_temp_suffix(filename)])
           tmp.binmode
           data = temp_file.respond_to?(:read) ? temp_file.tap(&:rewind).read : temp_file.to_s
           tmp.write(data)
@@ -213,22 +238,25 @@ module RedmineCloudAttachment
     end
 
     def build_upload_key
-      stamp = (created_on || Time.current).strftime('%Y/%m')
-      base = disk_filename.presence || "#{SecureRandom.hex}_#{filename}"
-      File.join(cloud_base_path, stamp, base)
+      raw = disk_filename.presence
+      key = object_key_for(raw, strip_prefix: false) if raw.present?
+      return key if key
+
+      fallback = "#{SecureRandom.hex(16)}#{StorageSecurity.safe_temp_suffix(filename)}"
+      object_key_for(fallback, strip_prefix: false)
     end
 
-    def download_from_cloud(tmp)
+    def download_from_cloud(tmp, key)
       case storage_backend
       when :s3
         require_s3!
-        s3_client.get_object(bucket: s3_bucket, key: cloud_key) { |chunk| tmp.write(chunk) }
+        s3_client.get_object(bucket: s3_bucket, key: key) { |chunk| tmp.write(chunk) }
       when :gcs
         require_gcs!
-        gcs_bucket.file(cloud_key)&.download(tmp.path)
+        gcs_bucket.file(key)&.download(tmp.path)
       when :azure
         require_azure!
-        _props, content = azure_blob_client.get_blob(azure_container, cloud_key)
+        _props, content = azure_blob_client.get_blob(azure_container, key)
         tmp.write(content)
       end
     end
@@ -254,18 +282,20 @@ module RedmineCloudAttachment
       self.content_type = nil if content_type&.length.to_i > 255
     end
 
-    def cloud_filename
-      disk_filename.presence || "#{SecureRandom.hex}_#{filename}"
+    def cloud_key
+      return nil if disk_filename.blank?
+
+      object_key_for(disk_filename, strip_prefix: cloud_diskfile?)
     end
 
-    def cloud_key
-      prefix = "#{storage_backend}_"
-      key = File.join(
-        cloud_base_path,
-        (created_on || Time.current).strftime('%Y/%m'),
-        cloud_filename
+    def object_key_for(name, strip_prefix:)
+      StorageSecurity.object_key(
+        base_path: cloud_base_path,
+        stamp: (created_on || Time.current).strftime('%Y/%m'),
+        disk_filename: name,
+        backend: storage_backend,
+        strip_prefix: strip_prefix
       )
-      cloud_diskfile? ? key.sub(prefix, '') : key
     end
 
     def cloud_config
@@ -274,11 +304,6 @@ module RedmineCloudAttachment
 
     def cloud_base_path
       cloud_config['path'] || 'redmine/files'
-    end
-
-    def iam_role_credentials?
-      # Allow EC2/ECS instance profiles when explicit keys are omitted.
-      cloud_config['access_key_id'].blank? && cloud_config['secret_access_key'].blank?
     end
 
     # Accept both sample keys (storage_account_name) and legacy short keys (account_name).
@@ -302,8 +327,9 @@ module RedmineCloudAttachment
       require 'azure/storage/blob'
     end
 
-    # Builds Aws::S3::Client options. Supports MinIO / S3-compatible stores via:
-    #   endpoint, public_endpoint, force_path_style
+    # Builds Aws::S3::Client options. Do not log the returned hash: it holds
+    # the secret access key. Supports MinIO via endpoint, public_endpoint,
+    # and force_path_style.
     def s3_client_options(endpoint: nil)
       opts = { region: cloud_config['region'].presence || 'us-east-1' }
       if cloud_config['access_key_id'].present?
@@ -332,6 +358,10 @@ module RedmineCloudAttachment
 
     def s3_client
       require_s3!
+      unless StorageSecurity.valid_http_endpoint?(cloud_config['endpoint'])
+        raise StorageSecurity::ConfigurationError, 'S3 endpoint is not an http(s) URL'
+      end
+
       @s3_client ||= Aws::S3::Client.new(s3_client_options)
     end
 
@@ -339,8 +369,9 @@ module RedmineCloudAttachment
     # while Redmine itself talks to the Docker service name (demo-minio).
     def s3_presign_client
       require_s3!
-      public_endpoint = cloud_config['public_endpoint'].presence
-      return s3_client if public_endpoint.blank? || public_endpoint == cloud_config['endpoint']
+      public_endpoint = cloud_config['public_endpoint'].to_s.strip
+      return s3_client if public_endpoint.empty? || public_endpoint == cloud_config['endpoint'].to_s.strip
+      return nil unless StorageSecurity.valid_http_endpoint?(public_endpoint)
 
       @s3_presign_client ||= Aws::S3::Client.new(s3_client_options(endpoint: public_endpoint))
     end
@@ -374,57 +405,80 @@ module RedmineCloudAttachment
     end
 
     def s3_presigned_url(expires_in = 15.minutes)
-      return nil unless storage_backend == :s3 && cloud_config['bucket'].present?
+      return nil unless storage_backend == :s3
+      return nil unless StorageSecurity.safe_container_name?(s3_bucket)
+      return nil unless StorageSecurity.s3_credentials_ok?(cloud_config)
+      return nil unless StorageSecurity.valid_http_endpoint?(cloud_config['endpoint'])
+      return nil unless StorageSecurity.valid_http_endpoint?(cloud_config['public_endpoint'])
+
+      key = cloud_key
+      return nil if key.nil?
 
       require_s3!
-      signer = Aws::S3::Presigner.new(client: s3_presign_client)
+      client = s3_presign_client
+      return nil if client.nil?
+
+      signer = Aws::S3::Presigner.new(client: client)
       signer.presigned_url(
         :get_object,
         bucket: s3_bucket,
-        key: cloud_key,
-        expires_in: expires_in.to_i
+        key: key,
+        expires_in: StorageSecurity.expiry_seconds(expires_in)
       )
     rescue StandardError => e
       Rails.logger.error(
-        "[CloudAttachment] Failed to generate S3 presigned URL for #{cloud_key} (attachment #{id}): #{e.message}"
+        "[CloudAttachment] Failed to generate S3 presigned URL for attachment #{id}: " \
+        "#{StorageSecurity.sanitize_log_text(e.message)}"
       )
       nil
     end
 
     def gcs_presigned_url(expires_in = 15.minutes)
-      return nil unless storage_backend == :gcs && cloud_config['bucket'].present?
+      return nil unless storage_backend == :gcs
+      return nil unless StorageSecurity.safe_container_name?(cloud_config['bucket'])
+
+      key = cloud_key
+      return nil if key.nil?
 
       require_gcs!
-      file = gcs_bucket.file(cloud_key)
+      file = gcs_bucket.file(key)
       return nil unless file
 
-      file.signed_url(method: 'GET', expires: expires_in.to_i)
+      file.signed_url(method: 'GET', expires: StorageSecurity.expiry_seconds(expires_in))
     rescue StandardError => e
       Rails.logger.error(
-        "[CloudAttachment] Failed to generate GCS presigned URL for #{cloud_key} (attachment #{id}): #{e.message}"
+        "[CloudAttachment] Failed to generate GCS presigned URL for attachment #{id}: " \
+        "#{StorageSecurity.sanitize_log_text(e.message)}"
       )
       nil
     end
 
     def azure_presigned_url(expires_in = 15.minutes)
-      return nil unless storage_backend == :azure && cloud_config['container'].present?
+      return nil unless storage_backend == :azure
+      return nil unless StorageSecurity.safe_container_name?(azure_container)
+      return nil unless StorageSecurity.azure_credentials_ok?(cloud_config)
+
+      key = cloud_key
+      return nil if key.nil?
 
       require_azure!
+      seconds = StorageSecurity.expiry_seconds(expires_in)
       start_time = Time.now.utc
-      expiry_time = start_time + expires_in.to_i
+      expiry_time = start_time + seconds
 
       sas_token = azure_blob_client.generate_blob_sas_token(
         azure_container,
-        cloud_key,
+        key,
         permission: 'r',
         start_time: start_time.iso8601,
         expiry_time: expiry_time.iso8601
       )
 
-      "#{azure_blob_client.generate_uri("#{azure_container}/#{cloud_key}")}?#{sas_token}"
+      "#{azure_blob_client.generate_uri("#{azure_container}/#{key}")}?#{sas_token}"
     rescue StandardError => e
       Rails.logger.error(
-        "[CloudAttachment] Failed to generate Azure presigned URL for #{cloud_key} (attachment #{id}): #{e.message}"
+        "[CloudAttachment] Failed to generate Azure presigned URL for attachment #{id}: " \
+        "#{StorageSecurity.sanitize_log_text(e.message)}"
       )
       nil
     end

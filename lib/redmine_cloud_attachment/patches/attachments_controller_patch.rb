@@ -1,33 +1,38 @@
 # frozen_string_literal: true
 
+require_relative '../storage_security'
+
 module RedmineCloudAttachment
   module Patches
     module AttachmentsControllerPatch
       def download
-        if @attachment&.respond_to?(:cloud_diskfile?) && @attachment.cloud_diskfile?
-          expires_in = @attachment.cloud_expiry_time
-          presigned_url_value = @attachment.direct_download_url(expires_in)
+        if @attachment&.respond_to?(:safe_direct_url) && @attachment.cloud_diskfile?
+          presigned_url_value = @attachment.safe_direct_url
 
           if presigned_url_value
             begin
-              Rails.logger.info(
-                "[CloudAttachment] Redirecting to presigned URL for attachment ##{@attachment.id}"
-              )
-
               if @attachment.container.is_a?(Version) || @attachment.container.is_a?(Project)
                 @attachment.increment_download
               end
 
-              redirect_to(presigned_url_value, allow_other_host: true)
+              # Set Location directly. redirect_to logs the full URL, and a
+              # presigned URL is a time-limited credential.
+              Rails.logger.info(
+                "[CloudAttachment] Redirecting attachment ##{@attachment.id} to configured cloud storage"
+              )
+              self.status = 302
+              self.location = presigned_url_value
+              self.response_body = ''
               return
             rescue StandardError => e
               Rails.logger.error(
-                "[CloudAttachment] Presigned redirect failed for ##{@attachment&.id}: #{e.message}. Falling back."
+                "[CloudAttachment] Presigned redirect failed for ##{@attachment&.id}: " \
+                "#{RedmineCloudAttachment::StorageSecurity.sanitize_log_text(e.message)}. Falling back."
               )
             end
           else
             Rails.logger.warn(
-              "[CloudAttachment] No presigned URL for attachment ##{@attachment.id}, falling back"
+              "[CloudAttachment] No usable presigned URL for attachment ##{@attachment.id}, falling back"
             )
           end
         end
@@ -62,7 +67,7 @@ module RedmineCloudAttachment
               @content = File.read(@attachment.diskfile, mode: 'rb')
               render action: 'file'
             elsif @attachment.is_image?
-              @direct_url = @attachment.direct_download_url(@attachment.cloud_expiry_time)
+              @direct_url = @attachment.safe_direct_url if @attachment.respond_to?(:safe_direct_url)
               render action: 'image'
             else
               render action: 'other'
@@ -90,7 +95,8 @@ module RedmineCloudAttachment
           :error_bulk_download_size_too_big,
           max_size: number_to_human_size(bulk_download_max_size.to_i)
         )
-        redirect_back_or_default(container_url, referer: true)
+        # Same-origin only. The Referer header is attacker-controlled.
+        redirect_to(container_url)
       end
 
       def file_readable
