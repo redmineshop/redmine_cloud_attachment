@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `diskfile` no longer falls back to a local path for cloud-prefixed attachments when the object key is unsafe or cloud download fails (avoids Thumbnail/send_file hammering missing local files during thumbnail storms)
 - Object keys drop `..` and strip the `s3_` / `gcs_` / `azure_` marker only from the filename, so a storage prefix that itself contains that marker still points at the uploaded object
 - Presigned download redirects stay on the configured storage host. Off-host URLs are not sent to the browser; Redmine serves the file instead
 - Presigned URL lifetime is clamped to between 1 minute and 7 days
