@@ -70,7 +70,7 @@ module RedmineCloudAttachment
         Rails.logger.error(
           "[CloudAttachment] Refusing cloud read for attachment #{id}: object key is not safe"
         )
-        return super
+        return nil
       end
 
       @temp_file_obj = Tempfile.create(['redmine', StorageSecurity.safe_temp_suffix(filename)])
@@ -81,11 +81,15 @@ module RedmineCloudAttachment
         @cached_temp_diskfile = @temp_file_obj.path
       rescue StandardError => e
         Rails.logger.error(
-          "[CloudAttachment] Fallback to local for attachment #{id} due to cloud download error: " \
-          "#{StorageSecurity.sanitize_log_text(e.message)}"
+          "[CloudAttachment] Cloud download failed for attachment #{id}: " \
+          "#{StorageSecurity.sanitize_log_text(e.message)}. " \
+          "Not falling back to local disk for cloud-prefixed objects."
         )
         cleanup_temp_file
-        return super
+        # Cloud-prefixed attachments are not on local disk. Returning super would
+        # point Thumbnail/send_file at a missing path and burn workers under load
+        # (e.g. thumbnail storms when S3 keys are missing or slow).
+        return nil
       end
 
       @cached_temp_diskfile
