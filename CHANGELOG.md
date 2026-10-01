@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.2.3 — 2026-10-01
+
+### Fixed
+
+- `lib/redmine_cloud_attachment/version.rb` defines Zeitwerk-expected `Version` (and keeps `VERSION` alias) so production `eager_load` no longer raises `NameError` on boot
+
+## 1.2.2
+
 ### Fixed
 
 - `diskfile` no longer falls back to a local path for cloud-prefixed attachments when the object key is unsafe or cloud download fails (avoids Thumbnail/send_file hammering missing local files during thumbnail storms)
