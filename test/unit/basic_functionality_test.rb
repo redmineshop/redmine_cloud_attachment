@@ -162,7 +162,12 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
       content_type: 'image/jpeg'
     )
 
-    assert image_attachment.thumbnailable?, 'Image attachment should be thumbnailable'
+    assert image_attachment.image?, 'Image attachment should be detected as an image'
+    if Redmine::Thumbnail.convert_available?
+      assert image_attachment.thumbnailable?
+    else
+      assert_not image_attachment.thumbnailable?
+    end
 
     text_attachment = Attachment.new(
       filename: 'test.txt',
@@ -171,6 +176,11 @@ class BasicFunctionalityTest < ActiveSupport::TestCase
     )
 
     assert_not text_attachment.thumbnailable?, 'Text attachment should not be thumbnailable'
+  end
+
+  def test_plugin_has_no_settings_screen
+    plugin = Redmine::Plugin.find(:redmine_cloud_attachment)
+    assert_not plugin.configurable?, 'Storage is configuration.yml, not an admin settings form'
   end
 
   def test_s3_client_options_include_minio_endpoint

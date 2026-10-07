@@ -72,6 +72,23 @@ class StorageSecurityTest < Minitest::Test
     )
   end
 
+  def test_object_key_rejects_percent_encoded_traversal
+    assert_nil Security.object_key(
+      base_path: 'redmine/files',
+      stamp: '2026/09',
+      disk_filename: 's3_%2e%2e%2fsecret.txt',
+      backend: :s3,
+      strip_prefix: true
+    )
+    assert_nil Security.object_key(
+      base_path: 'redmine/files',
+      stamp: '2026/09',
+      disk_filename: 's3_%252e%252e%252fsecret.txt',
+      backend: :s3,
+      strip_prefix: true
+    )
+  end
+
   def test_object_key_rejects_a_name_that_is_only_dotdot
     assert_nil Security.object_key(
       base_path: 'redmine/files',
@@ -110,6 +127,9 @@ class StorageSecurityTest < Minitest::Test
     refute Security.presigned_url_allowed?('http://user:secret@localhost:9000/redmine-attachments/a', origins, bucket: bucket)
     refute Security.presigned_url_allowed?('http://localhost:9000/other-bucket/secret', origins, bucket: bucket)
     refute Security.presigned_url_allowed?('http://localhost:9000/redmine-attachments/../../other/secret', origins, bucket: bucket)
+    refute Security.presigned_url_allowed?('http://localhost:9000/redmine-attachments/%2e%2e/%2e%2e/other/secret', origins, bucket: bucket)
+    refute Security.presigned_url_allowed?('http://localhost:9000/redmine-attachments/%252e%252e/%252e%252e/other/secret', origins, bucket: bucket)
+    refute Security.presigned_url_allowed?("http://localhost:9000/redmine-attachments/notes%00.txt", origins, bucket: bucket)
   end
 
   def test_internal_minio_host_is_not_a_browser_redirect_target_when_public_endpoint_is_set
@@ -238,6 +258,9 @@ class StorageSecurityTest < Minitest::Test
     controller = File.read(File.join(root, 'lib/redmine_cloud_attachment/patches/attachments_controller_patch.rb'))
     refute_match(/redirect_to\(\s*presigned/, controller)
     assert_includes controller, 'self.location = presigned_url_value'
+    assert_includes controller, 'attachments_visible?'
+    init = File.read(File.join(root, 'init.rb'))
+    refute_match(/\bsettings\b/, init)
     view = File.read(File.join(root, 'app/views/attachments/image.html.erb'))
     refute_match(/html_safe|raw\b/, view)
   end

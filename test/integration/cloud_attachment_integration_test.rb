@@ -1,187 +1,109 @@
+# frozen_string_literal: true
+
 require File.expand_path('../../test_helper', __FILE__)
 
 class CloudAttachmentIntegrationTest < Redmine::IntegrationTest
-  fixtures :projects, :users, :attachments, :issues, :roles, :members, :member_roles, 
-           :trackers, :issue_statuses, :enabled_modules, :enumerations
+  MINIO_CONFIG = {
+    'bucket' => 'redmine-attachments',
+    'region' => 'us-east-1',
+    'path' => 'redmine/files',
+    'access_key_id' => 'minioadmin',
+    'secret_access_key' => 'minioadmin',
+    'endpoint' => 'http://127.0.0.1:9000',
+    'public_endpoint' => 'http://127.0.0.1:9000',
+    'force_path_style' => true
+  }.freeze
 
-  def setup
-    @user = User.find(2) # jsmith 
-    @project = Project.find(1)
-    @cloud_attachment = find_cloud_attachment
-    skip "No cloud attachments available for testing" unless @cloud_attachment
+  def teardown
+    clear_cloud_attachment_stubs
+    super
   end
 
-  def test_cloud_attachment_download_redirect
+  def test_download_route_redirects_for_a_visible_cloud_attachment
+    attachment = cloud_fixture
+    url = 'http://127.0.0.1:9000/redmine-attachments/redmine/files/2026/09/notes.txt?X-Amz-Signature=sekret'
+    stub_direct_url(url)
     log_user('jsmith', 'jsmith')
-    
-    # Test direct download for cloud attachments
-    get "/attachments/download/#{@cloud_attachment.id}/#{@cloud_attachment.filename}"
-    
-    # Should either redirect to cloud URL or serve file directly
-    assert_response_in [200, 302], "Should handle cloud attachment download"
-    
-    if response.status == 302
-      # Should redirect to cloud storage URL
-      assert response.location.present?, "Should redirect to cloud storage URL"
-      assert response.location.start_with?('http'), "Redirect location should be a URL"
-    end
+
+    get "/attachments/download/#{attachment.id}/#{attachment.filename}"
+
+    assert_response :redirect
+    assert_equal url, response.location
   end
 
-  def test_cloud_attachment_show_view
-    log_user('jsmith', 'jsmith')
-    
-    # Test show view for cloud attachments
-    get "/attachments/#{@cloud_attachment.id}"
-    
-    assert_response :success
-    assert_select 'h2', text: @cloud_attachment.filename
-  end
+  def test_api_show_includes_the_presigned_url_only_when_the_attachment_is_visible
+    Setting.rest_api_enabled = '1'
+    attachment = cloud_fixture
+    url = 'http://127.0.0.1:9000/redmine-attachments/redmine/files/2026/09/notes.txt?X-Amz-Signature=sekret'
+    stub_direct_url(url)
 
-  def test_thumbnail_generation_via_controller
-    skip "ImageMagick convert not available" unless convert_installed?
-    skip "Only test image attachments" unless @cloud_attachment.is_image?
-    
-    log_user('jsmith', 'jsmith')
-    
-    # Test thumbnail generation through controller
-    get "/attachments/thumbnail/#{@cloud_attachment.id}"
-    
-    # Should either return thumbnail or 404 if generation fails
-    assert_response_in [200, 404], "Should handle thumbnail request"
-    
-    if response.status == 200
-      assert_equal 'image/png', response.content_type, "Thumbnail should be PNG format"
-      assert response.body.present?, "Thumbnail content should be present"
-    end
-  end
-
-  def test_api_with_cloud_attachments
-    # Test API response includes direct download URLs
-    get "/attachments/#{@cloud_attachment.id}.xml", 
-        headers: { 'Authorization' => ActionController::HttpAuthentication::Basic.encode_credentials('jsmith', 'jsmith') }
-    
-    assert_response :success
-    assert_equal 'application/xml', response.content_type
-    
-    # Check if direct_content_url is included for cloud attachments
-    assert_select 'attachment content_url', count: 1
-  end
-
-  def test_bulk_download_with_cloud_attachments
-    skip "Need container with multiple attachments" unless @cloud_attachment.container&.attachments&.count.to_i > 1
-    
-    log_user('jsmith', 'jsmith')
-    
-    container = @cloud_attachment.container
-    case container
-    when Issue
-      get "/issues/#{container.id}/attachments/download"
-    when Project
-      get "/projects/#{container.identifier}/files/download"
-    else
-      skip "Unsupported container type for bulk download"
-    end
-    
-    # Should handle bulk download with cloud attachments
-    assert_response_in [200, 404], "Should handle bulk download"
-  end
-
-  def test_cloud_attachment_in_issue_view
-    skip "Attachment not associated with issue" unless @cloud_attachment.container.is_a?(Issue)
-    
-    log_user('jsmith', 'jsmith')
-    issue = @cloud_attachment.container
-    
-    get "/issues/#{issue.id}"
-    assert_response :success
-    
-    # Should display cloud attachment in issue view
-    assert_select '.attachments', count: 1
-    assert_select 'a', text: @cloud_attachment.filename
-  end
-
-  def test_thumbnail_macro_with_cloud_attachments
-    skip "ImageMagick convert not available" unless convert_installed?
-    skip "Only test image attachments" unless @cloud_attachment.is_image?
-    skip "Attachment not associated with issue" unless @cloud_attachment.container.is_a?(Issue)
-    
-    log_user('jsmith', 'jsmith')
-    issue = @cloud_attachment.container
-    
-    # Add wiki content with thumbnail macro
-    wiki_content = "{{thumbnail(#{@cloud_attachment.filename})}}"
-    
-    put "/issues/#{issue.id}", 
-        params: { 
-          issue: { 
-            notes: wiki_content 
-          } 
+    get "/attachments/#{attachment.id}.xml",
+        headers: {
+          'Authorization' => ActionController::HttpAuthentication::Basic.encode_credentials('jsmith', 'jsmith')
         }
-    
-    follow_redirect! if response.redirect?
-    
-    # Should render thumbnail macro properly
+
     assert_response :success
-    assert_select 'a.thumbnail', count: 1
+    assert_includes response.body, 'direct_content_url'
+    assert_includes response.body, '127.0.0.1:9000'
+
+    Issue.where(id: attachment.container_id).update_all(is_private: true, assigned_to_id: nil)
+    get "/attachments/#{attachment.id}.xml",
+        headers: {
+          'Authorization' => ActionController::HttpAuthentication::Basic.encode_credentials('someone', 'foo')
+        }
+
+    assert_response :forbidden
+    refute_includes response.body, 'sekret'
+    refute_includes response.body, 'direct_content_url'
   end
 
-  def test_attachment_visibility_with_cloud_files
-    # Test that cloud attachments respect visibility rules
+  def test_non_admin_cannot_open_plugin_settings
+    assert_not Redmine::Plugin.find(:redmine_cloud_attachment).configurable?
     log_user('jsmith', 'jsmith')
-    
-    # Should be able to access if user has permission
-    get "/attachments/#{@cloud_attachment.id}"
-    assert_response :success
-    
-    # Test with anonymous user
-    reset_session
-    get "/attachments/#{@cloud_attachment.id}"
-    assert_response :redirect # Should redirect to login
+
+    get '/settings/plugin/redmine_cloud_attachment'
+
+    assert_response :forbidden
   end
 
-  def test_error_handling_for_invalid_cloud_attachments
-    log_user('jsmith', 'jsmith')
-    
-    # Test with non-existent attachment
-    get "/attachments/download/99999/nonexistent.jpg"
+  def test_admin_plugin_settings_are_not_a_form
+    log_user('admin', 'admin')
+
+    get '/settings/plugin/redmine_cloud_attachment'
+
     assert_response :not_found
-    
-    # Test thumbnail for non-existent attachment
-    get "/attachments/thumbnail/99999"
-    assert_response :not_found
   end
 
-  def test_performance_optimization
-    log_user('jsmith', 'jsmith')
-    
-    # Multiple requests should be handled efficiently
-    start_time = Time.current
-    
-    5.times do
-      get "/attachments/#{@cloud_attachment.id}"
-      assert_response :success
-    end
-    
-    duration = Time.current - start_time
-    
-    # Should complete reasonably quickly (adjust threshold as needed)
-    assert duration < 5.seconds, "Multiple requests should be handled efficiently"
+  def test_settings_post_without_a_csrf_token_is_rejected
+    log_user('admin', 'admin')
+    before = Setting.where(name: 'plugin_redmine_cloud_attachment').count
+    ActionController::Base.allow_forgery_protection = true
+
+    post '/settings/plugin/redmine_cloud_attachment', params: { settings: { bucket: 'evil-bucket' } }
+
+    assert_response :unprocessable_entity
+    assert_equal before, Setting.where(name: 'plugin_redmine_cloud_attachment').count
+  ensure
+    ActionController::Base.allow_forgery_protection = false
   end
 
   private
 
-  def assert_response_in(expected_statuses, message = nil)
-    assert_includes expected_statuses, response.status, message || "Expected response to be one of #{expected_statuses}, got #{response.status}"
+  def cloud_fixture
+    attachment = Attachment.find(1)
+    attachment.update_columns(
+      disk_filename: 's3_notes.txt',
+      filename: 'notes.txt',
+      content_type: 'text/plain',
+      filesize: 5
+    )
+    attachment
   end
 
-  def convert_installed?
-    Redmine::Thumbnail.convert_available?
+  def stub_direct_url(url)
+    Thread.current[:rca_stub_config] = true
+    Thread.current[:rca_cloud_config] = MINIO_CONFIG
+    Thread.current[:rca_stub_url] = true
+    Thread.current[:rca_direct_url] = url
   end
-
-  def log_user(login, password)
-    post '/login', params: { username: login, password: password }
-    assert_response :redirect
-    assert_redirected_to '/my/page'
-    follow_redirect!
-  end
-end 
+end

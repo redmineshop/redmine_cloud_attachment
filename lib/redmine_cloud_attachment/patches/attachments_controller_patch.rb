@@ -35,58 +35,40 @@ module RedmineCloudAttachment
               "[CloudAttachment] No usable presigned URL for attachment ##{@attachment.id}, falling back"
             )
           end
+
+          if @attachment.diskfile.blank?
+            render_404
+            return
+          end
         end
 
         super
       end
 
       def show
-        unless @attachment&.respond_to?(:cloud_diskfile?) && @attachment.cloud_diskfile?
-          return super
-        end
-
-        respond_to do |format|
-          format.html do
-            if @attachment.container.respond_to?(:attachments)
-              @attachments = @attachment.container.attachments.to_a
-              if (index = @attachments.index(@attachment))
-                @paginator = Redmine::Pagination::Paginator.new(@attachments.size, 1, index + 1)
-              end
-            end
-
-            if @attachment.is_diff?
-              @diff = File.read(@attachment.diskfile, mode: 'rb')
-              @diff_type = params[:type] || User.current.pref[:diff_type] || 'inline'
-              @diff_type = 'inline' unless %w[inline sbs].include?(@diff_type)
-              if User.current.logged? && @diff_type != User.current.pref[:diff_type]
-                User.current.pref[:diff_type] = @diff_type
-                User.current.preference.save
-              end
-              render action: 'diff'
-            elsif @attachment.is_text? && @attachment.filesize <= Setting.file_max_size_displayed.to_i.kilobyte
-              @content = File.read(@attachment.diskfile, mode: 'rb')
-              render action: 'file'
-            elsif @attachment.is_image?
-              @direct_url = @attachment.safe_direct_url if @attachment.respond_to?(:safe_direct_url)
-              render action: 'image'
-            else
-              render action: 'other'
-            end
+        if @attachment&.respond_to?(:cloud_diskfile?) && @attachment.cloud_diskfile?
+          if @attachment.is_image? && @attachment.respond_to?(:safe_direct_url)
+            @direct_url = @attachment.safe_direct_url
+          elsif request.format.html? && cloud_preview_needs_bytes? && @attachment.diskfile.blank?
+            render_404
+            return
           end
-          format.api
         end
+
+        super
       end
 
       def find_downloadable_attachments
         return unless defined?(@container) && @container
 
-        @attachments = @container.attachments.select do |attachment|
-          if attachment.respond_to?(:cloud_diskfile?) && attachment.cloud_diskfile?
-            attachment.disk_filename.present?
-          else
-            attachment.readable?
-          end
+        # Same gate as Redmine core. Project#visible? is view_project;
+        # attachments_visible? also requires view_files (and the files module).
+        unless @container.try(:attachments_visible?)
+          deny_access
+          return
         end
+
+        @attachments = @container.attachments.select(&:readable?)
 
         bulk_download_max_size = Setting.bulk_download_max_size.to_i.kilobytes
         return unless @attachments.sum(&:filesize) > bulk_download_max_size
@@ -97,6 +79,7 @@ module RedmineCloudAttachment
         )
         # Same-origin only. The Referer header is attacker-controlled.
         redirect_to(container_url)
+        return
       end
 
       def file_readable
@@ -111,6 +94,18 @@ module RedmineCloudAttachment
           logger.error "Cannot send attachment, #{@attachment.diskfile} does not exist or is unreadable."
           render_404
         end
+      end
+
+      private
+
+      def cloud_preview_needs_bytes?
+        return false unless @attachment
+        # Rouge treats .pdf as a lexer, so Attachment#is_text? is true for PDFs.
+        # The PDF preview embeds a download path and does not read the object.
+        return false if @attachment.is_pdf? || @attachment.is_image?
+
+        @attachment.is_diff? ||
+          (@attachment.is_text? && @attachment.filesize.to_i <= Setting.file_max_size_displayed.to_i.kilobyte)
       end
     end
   end

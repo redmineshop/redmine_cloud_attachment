@@ -1,11 +1,11 @@
 # Redmine Cloud Attachment — S3, GCS & Azure Storage for Redmine
 
 [![Community · Free forever](https://img.shields.io/badge/Community-Free%20forever-brightgreen)](https://redmineshop.com/products/redmine-cloud-attachment)
-[![Redmine 5.x/6.x](https://img.shields.io/badge/Redmine-5.x%20%7C%206.x-blue)](https://redmineshop.com/docs/compatibility)
+[![Verified in CI: Redmine 7.0.1](https://img.shields.io/badge/Verified%20in%20CI-Redmine%207.0.1-blue)](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE.txt)
 [![CI](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml/badge.svg)](https://github.com/redmineshop/redmine_cloud_attachment/actions/workflows/ci.yml)
 
-**Last maintained:** 2026-09-24
+**Last maintained:** 2026-10-07
 
 **Source on GitHub:** [github.com/redmineshop/redmine_cloud_attachment](https://github.com/redmineshop/redmine_cloud_attachment)
 
@@ -21,9 +21,10 @@ Store Redmine issue attachments in cloud object storage — AWS S3, Google Cloud
 
 ## Requirements
 
-- Redmine 5.0.x or 6.x
-- Ruby 3.0+
-- AWS S3 bucket (+ IAM credentials or instance profile), GCS bucket, or Azure Storage account
+- Redmine 5.0 or newer is declared. Public CI verifies Redmine 7.0.1 only
+- Ruby 3.0+ is declared. Public CI uses Ruby 3.2.3
+- MySQL 8 or PostgreSQL. Public CI uses MySQL 8.0.46. PostgreSQL was not run
+- AWS S3 bucket (+ IAM credentials or instance profile), GCS bucket, Azure Storage account, or any S3-compatible endpoint such as MinIO
 
 ### IAM (S3) minimum
 
@@ -103,11 +104,12 @@ between 1 minute and 7 days.
 
 | Redmine | Ruby | Database | Status |
 |---------|------|----------|--------|
-| 6.x     | 3.2+ | MySQL 8 / PostgreSQL | Targeted — **untested** (no published QA matrix) |
-| 5.1.x   | 3.1+ | MySQL 8 / PostgreSQL | Targeted — **untested** |
-| 5.0.x   | 3.0+ | MySQL 8 / PostgreSQL | Targeted — **untested** |
+| 7.0.1   | 3.2.3 | MySQL 8.0.46 | **Verified in CI** — checks out Redmine 7.0.1, installs this plugin, runs migrations, and runs the plugin MiniTest suite with MinIO for the S3 upload, download, and delete tests |
+| 6.x     | 3.2+ | MySQL 8 / PostgreSQL | Declared — **untested** |
+| 5.1.x   | 3.1+ | MySQL 8 / PostgreSQL | Declared — **untested** |
+| 5.0.x   | 3.0+ | MySQL 8 / PostgreSQL | Declared — **untested** |
 
-Do not treat catalog versions as tested cells. This plugin does not declare `requires_redmine` in `init.rb`.
+The plugin does not declare `requires_redmine` in `init.rb`. Only the 7.0.1 / Ruby 3.2.3 / MySQL 8.0.46 cell was run. PostgreSQL was not run. Other 7.0 patch releases were not run. Do not treat the 5.x and 6.x rows as tested.
 
 ## Screenshot
 
@@ -123,33 +125,43 @@ Administration → Plugins (no Configure link):
 
 ![Plugin listed under Administration → Plugins](screenshots/admin-plugins.png)
 
-Screenshot refresh lives in the private `redmineshop/redmineshop` harness. A public clone cannot run it.
+These screenshots were not regenerated for the public CI job.
 
 ## Tests
 
-Unit + integration tests live under `test/` (MiniTest). They cover object keys, presigned-host checks, provider config validation, log redaction, and thumbnail size bounds. They are **not** a Redmine 5.1 / 6.x matrix.
+MiniTest lives under `test/`. It covers:
 
-On the private `redmineshop/redmineshop` demo stack (not this public clone):
+- Object keys, including encoded `..` segments, and presigned-host checks
+- Presigned URL lifetime clamped between 1 minute and 7 days
+- Log redaction of signed URL queries and access keys
+- Upload routed to the S3 client, local storage when cloud storage is off, and delete of the object
+- Download authorization: anonymous users, private issues, and bulk download without `view_files`
+- A mismatched filename, an off-host presign (file is sent by Redmine instead), and a missing object
+- No admin settings form, and a settings POST without a CSRF token is rejected
+
+Public CI (`.github/workflows/ci.yml`) has two jobs:
+
+- Ruby syntax (`ruby -c`) and `test/unit/storage_security_test.rb` on Ruby 3.2. That job does not boot Redmine.
+- Redmine 7.0.1 with MySQL 8.0.46. The job checks the plugin out into `plugins/redmine_cloud_attachment`, starts MinIO, runs `db:migrate` and `redmine:plugins:migrate`, then `rake redmine:plugins:test NAME=redmine_cloud_attachment` (unit, functional, and integration).
+
+On a Redmine install that already has this plugin:
 
 ```bash
-PLUGIN_NAME=redmine_cloud_attachment ./demo/scripts/run-sso-plugin-tests.sh
+bundle exec rake redmine:plugins:test NAME=redmine_cloud_attachment RAILS_ENV=test
 ```
 
-A public clone of this plugin does not ship `demo/scripts/`.
+This plugin does not add tables. `redmine:plugins:migrate` is still run in CI.
 
-### Quality harness (demo + E2E)
-
-E2E lives in the **private** `redmineshop/redmineshop` harness (`docker-compose.demo.yml` + Playwright). This public GitHub repo is the plugin only — it does not ship that compose file, and a public clone cannot open private harness docs.
-
-Install and smoke this plugin on your own Redmine: [cloud attachment install](https://redmineshop.com/docs/cloud-attachment-install).
+This repository does not run a browser end-to-end test. Install the plugin on your own Redmine with the steps in [Installation](#installation). Notes: [cloud attachment install](https://redmineshop.com/docs/cloud-attachment-install).
 
 | Bar | Status |
 | --- | --- |
-| Automated tests beyond `ruby -c` | GitHub Actions runs `test/unit/storage_security_test.rb` (object keys, presign hosts, provider config, log redaction, thumbnail bounds). Controller and integration tests need a Redmine test database and are not in that workflow. |
-| E2E primary happy path | Playwright spec in the private monorepo attaches a file and expects download `302` to port 9000. This repository's workflow does not run Playwright. |
-| Installed + enabled on demo Redmine | The demo stack mounts this plugin from `demo/plugins/`. Enabling it is not part of this repository's workflow. |
-| UI screenshot in README | `screenshots/issue-attachment.png`, `screenshots/issue-edit-files.png`, `screenshots/admin-plugins.png` |
-| Redmine 5.1 / 6.x matrix | **Declared / untested** — one demo image is not a QA matrix |
+| MiniTest on Redmine 7.0.1 + MySQL 8 + MinIO | **Verified in CI** — Ruby 3.2.3. The run count is the summary printed by that job |
+| Redmine 5.x / 6.x | **Declared / untested** |
+| PostgreSQL | **Not run** |
+| Browser end-to-end | **Not in this repository** |
+| README screenshots | **Present** — `screenshots/issue-attachment.png`, `screenshots/issue-edit-files.png`, `screenshots/admin-plugins.png`. Not regenerated for the public CI job |
+| Live demo install | **Not re-checked** for this CI job |
 
 ## Troubleshooting
 

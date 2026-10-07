@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
-require File.expand_path('../../../test/test_helper', __dir__) rescue nil
-
-# Lightweight check without full Redmine test helper when run in isolation.
+require 'minitest/test'
 require_relative '../../lib/redmine_cloud_attachment/version'
 
 class VersionZeitwerkContractTest < Minitest::Test
@@ -11,4 +9,8 @@ class VersionZeitwerkContractTest < Minitest::Test
     assert_equal '1.2.3', RedmineCloudAttachment::Version::STRING
     assert_equal RedmineCloudAttachment::Version::STRING, RedmineCloudAttachment::VERSION
   end
+end
+
+if $PROGRAM_NAME == __FILE__
+  require 'minitest/autorun'
 end

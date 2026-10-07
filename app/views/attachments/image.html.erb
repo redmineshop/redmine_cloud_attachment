@@ -1,6 +1,7 @@
 <%= render :layout => 'layouts/file' do %>
+  <%# http(s) only, no quotes, whitespace, or backslash. Host checks live in safe_direct_url. %>
   <% direct = @direct_url.to_s %>
-  <% image_path = if direct.match?(/\Ahttps?:\/\/[^\s]+\z/i)
+  <% image_path = if direct.match?(%r{\Ahttps?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+\z}i)
                     direct
                   else
                     download_named_attachment_path(@attachment, @attachment.filename)

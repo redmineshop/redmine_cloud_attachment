@@ -7,6 +7,7 @@ on:
 
 jobs:
   syntax:
+    name: Ruby syntax and storage security
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +18,103 @@ jobs:
         run: find . -name "*.rb" -print0 | xargs -0 -n1 ruby -c
       - name: Storage security tests
         run: ruby test/unit/storage_security_test.rb
+
+  test:
+    name: Redmine 7.0.1 plugin tests (MySQL 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_DATABASE: redmine_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=18
+    steps:
+      - name: Checkout Redmine 7.0.1
+        uses: actions/checkout@v4
+        with:
+          repository: redmine/redmine
+          ref: 7.0.1
+          path: redmine
+
+      - name: Install plugin
+        uses: actions/checkout@v4
+        with:
+          path: redmine/plugins/redmine_cloud_attachment
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            default-libmysqlclient-dev \
+            pkg-config \
+            libyaml-dev \
+            curl
+
+      - name: Configure database
+        working-directory: redmine
+        run: |
+          cat > config/database.yml <<'YAML'
+          test:
+            adapter: mysql2
+            database: redmine_test
+            username: root
+            password: root
+            host: 127.0.0.1
+            encoding: utf8mb4
+          YAML
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2.3"
+          bundler: "2.6.9"
+
+      - name: Install gems
+        working-directory: redmine
+        run: |
+          bundle config set --local without 'development minimagick'
+          bundle install
+
+      - name: Migrate and run plugin tests
+        working-directory: redmine
+        env:
+          RAILS_ENV: test
+          MINIO_ENDPOINT: http://127.0.0.1:9000
+          MINIO_ACCESS_KEY_ID: minioadmin
+          MINIO_SECRET_ACCESS_KEY: minioadmin
+          MINIO_BUCKET: redmine-attachments
+        run: |
+          # Docker Hub denies anonymous pulls of minio/minio. Run the same
+          # release binary in this step so the process stays up for the suite.
+          curl -fL --retry 3 -o /tmp/minio \
+            https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z
+          chmod +x /tmp/minio
+          /tmp/minio --version
+          MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
+            /tmp/minio server /tmp/minio-data --address 127.0.0.1:9000 \
+            > /tmp/minio.log 2>&1 &
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/minio.log
+            exit 1
+          fi
+          ruby -v
+          bundle exec rake db:migrate redmine:plugins:migrate NAME=redmine_cloud_attachment
+          bundle exec rails runner 'puts %(Rails #{Rails.version}); puts %(Redmine #{Redmine::VERSION}); puts %(MySQL #{ActiveRecord::Base.connection.select_value(%q{SELECT VERSION()})})'
+          bundle exec rake redmine:plugins:test NAME=redmine_cloud_attachment

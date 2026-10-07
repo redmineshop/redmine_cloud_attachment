@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Bulk download keeps Redmine's `attachments_visible?` check, so a user who can see a project but cannot view its files does not receive the archive
+- Object keys reject percent-encoded `..` / slash segments, and presigned URL paths reject encoded dot segments
+- Destroying a cloud attachment no longer downloads the object in order to delete a local path
+
+### Added
+
+- GitHub Actions checks out Redmine 7.0.1, installs this plugin, and runs the MiniTest suite on MySQL 8 with MinIO
+
 ## 1.2.3 — 2026-10-01
 
 ### Fixed
