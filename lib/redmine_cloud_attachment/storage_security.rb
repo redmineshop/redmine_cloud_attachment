@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'cgi'
 require 'uri'
 
 module RedmineCloudAttachment
@@ -118,8 +119,11 @@ module RedmineCloudAttachment
         name = name.delete_prefix(prefix) if name.start_with?(prefix)
       end
       name = File.basename(name)
-      return nil if name.empty? || name == '.' || name == '..'
-      return nil if name.match?(CONTROL_CHARS) || name.match?(/[?#\\"'<>]/)
+      return nil unless safe_object_name?(name)
+
+      # Reject percent-encoded traversal (`%2e%2e`, `%2f`) before the key is signed.
+      decoded = CGI.unescape(name)
+      return nil unless decoded == name || safe_object_name?(decoded)
 
       name
     end
@@ -227,8 +231,34 @@ module RedmineCloudAttachment
       "#{uri.scheme.downcase}://#{uri.host.downcase}:#{uri.port}"
     end
 
+    def safe_object_name?(name)
+      text = name.to_s
+      return false if text.empty? || text == '.' || text == '..'
+      return false if text.match?(CONTROL_CHARS) || text.match?(/[?#\\"'<>%]/)
+      return false if text.include?('/') || text.include?('\\')
+
+      true
+    end
+
+    # Decode repeatedly so `%252e%252e` cannot survive as a dot segment.
     def safe_url_path?(path)
-      segments = path.to_s.split('/')
+      current = path.to_s
+      4.times do
+        return false unless plain_url_path?(current)
+
+        decoded = CGI.unescape(current)
+        break if decoded == current
+
+        current = decoded
+      end
+      plain_url_path?(current)
+    end
+
+    def plain_url_path?(path)
+      text = path.to_s
+      return false if text.match?(CONTROL_CHARS) || text.include?('\\')
+
+      segments = text.split('/')
       segments.none? { |segment| segment == '.' || segment == '..' }
     end
 

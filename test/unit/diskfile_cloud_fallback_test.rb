@@ -21,3 +21,7 @@ class DiskfileCloudFallbackContractTest < Minitest::Test
     assert_includes text, '?[redacted]'
   end
 end
+
+if $PROGRAM_NAME == __FILE__
+  require 'minitest/autorun'
+end

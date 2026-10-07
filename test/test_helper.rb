@@ -60,7 +60,63 @@ module CloudAttachmentTestHelper
       File.delete(file) rescue nil
     end
   end
+
+  def with_redmine_config(settings)
+    config = Redmine::Configuration.instance_variable_get(:@config)
+    raise 'Redmine configuration is not loaded' unless config
+
+    replacement = {}
+    settings.each { |key, value| replacement[key.to_s] = value }
+    previous = replacement.keys.to_h { |key| [key, config[key]] }
+    config.merge!(replacement)
+    yield
+  ensure
+    config.merge!(previous) if config && previous
+  end
+
+  def with_tmp_attachments_directory
+    previous = Attachment.storage_path
+    set_tmp_attachments_directory
+    FileUtils.mkdir_p(Attachment.storage_path)
+    yield
+  ensure
+    Attachment.storage_path = previous if previous
+  end
+
+  def clear_cloud_attachment_stubs
+    Thread.current[:rca_stub_url] = nil
+    Thread.current[:rca_direct_url] = nil
+    Thread.current[:rca_stub_config] = nil
+    Thread.current[:rca_cloud_config] = nil
+    Thread.current[:rca_stub_diskfile] = nil
+    Thread.current[:rca_diskfile] = nil
+  end
 end
+
+# Test doubles. A flag must be set or the real cloud methods run.
+module CloudAttachmentTestStub
+  def direct_download_url(*)
+    return Thread.current[:rca_direct_url] if Thread.current[:rca_stub_url]
+
+    super
+  end
+
+  def cloud_config
+    return Thread.current[:rca_cloud_config] if Thread.current[:rca_stub_config]
+
+    super
+  end
+
+  def diskfile
+    return Thread.current[:rca_diskfile] if Thread.current[:rca_stub_diskfile]
+
+    super
+  end
+end
+
+Attachment.prepend(CloudAttachmentTestStub) unless Attachment.ancestors.include?(CloudAttachmentTestStub)
 
 # Include helper in all test cases
 ActiveSupport::TestCase.include CloudAttachmentTestHelper
+ActiveSupport::TestCase.setup { clear_cloud_attachment_stubs }
+ActiveSupport::TestCase.teardown { clear_cloud_attachment_stubs }

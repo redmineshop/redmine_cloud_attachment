@@ -24,7 +24,7 @@ run_test() {
     
     echo -e "${YELLOW}📋 Running $test_name...${NC}"
     
-    if bundle exec rake test TEST="$test_file" 2>/dev/null; then
+    if bundle exec rake test TEST="$test_file"; then
         echo -e "${GREEN}✅ $test_name passed${NC}"
         return 0
     else
@@ -45,18 +45,10 @@ echo -e "${YELLOW}🚀 Starting test execution...${NC}"
 failed_tests=0
 total_tests=0
 
-# Unit tests
-for test_file in plugins/redmine_cloud_attachment/test/unit/*.rb; do
-    if [ -f "$test_file" ]; then
-        total_tests=$((total_tests + 1))
-        if ! run_test "$test_file"; then
-            failed_tests=$((failed_tests + 1))
-        fi
-    fi
-done
-
-# Integration tests
-for test_file in plugins/redmine_cloud_attachment/test/integration/*.rb; do
+# Unit, functional, and integration tests
+for test_file in plugins/redmine_cloud_attachment/test/unit/*.rb \
+                 plugins/redmine_cloud_attachment/test/functional/*.rb \
+                 plugins/redmine_cloud_attachment/test/integration/*.rb; do
     if [ -f "$test_file" ]; then
         total_tests=$((total_tests + 1))
         if ! run_test "$test_file"; then

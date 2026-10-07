@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require File.expand_path('../../test_helper', __FILE__)
+require 'aws-sdk-s3'
 
 class CloudAttachmentSecurityTest < ActiveSupport::TestCase
   fixtures :projects, :users, :attachments
@@ -140,6 +141,52 @@ class CloudAttachmentSecurityTest < ActiveSupport::TestCase
 
     assert_nil attachment.thumbnail(size: 100)
     assert_equal 0, calls
+  end
+
+  def test_custom_endpoint_skips_optional_checksum_headers
+    attachment = cloud_attachment('s3_notes.txt')
+    opts = attachment.send(:s3_client_options)
+
+    assert_equal 'http://demo-minio:9000', opts[:endpoint]
+    assert_equal true, opts[:force_path_style]
+    assert_equal 'when_required', opts[:request_checksum_calculation]
+    assert_equal 'when_required', opts[:response_checksum_validation]
+  end
+
+  def test_s3_presign_clamps_expiry_before_signing
+    attachment = cloud_attachment('s3_notes.txt')
+    seen = nil
+    signer = Object.new
+    signer.define_singleton_method(:presigned_url) do |_action, params|
+      seen = params[:expires_in]
+      'http://127.0.0.1:9000/redmine-attachments/redmine/files/a.txt?X-Amz-Signature=abc'
+    end
+    Aws::S3::Presigner.stubs(:new).returns(signer)
+
+    url = attachment.direct_download_url(10.years)
+
+    assert_equal RedmineCloudAttachment::StorageSecurity::MAX_EXPIRY_SECONDS, seen
+    assert_includes url, '127.0.0.1:9000'
+  end
+
+  def test_presign_errors_do_not_log_secrets
+    attachment = cloud_attachment('s3_notes.txt')
+    Aws::S3::Presigner.stubs(:new).raises(
+      StandardError.new(
+        'secret_access_key=supersecret https://127.0.0.1:9000/k?X-Amz-Signature=abcdef1234567890'
+      )
+    )
+    io = StringIO.new
+    previous = Rails.logger
+    Rails.logger = Logger.new(io)
+
+    assert_nil attachment.direct_download_url
+    logged = io.string
+    refute_includes logged, 'supersecret'
+    refute_includes logged, 'abcdef1234567890'
+    assert_includes logged, '[redacted]'
+  ensure
+    Rails.logger = previous if previous
   end
 
   def test_disk_filename_is_not_mass_assignable

@@ -167,7 +167,9 @@ module RedmineCloudAttachment
     end
 
     def storage_backend
-      return @storage_backend if defined?(@storage_backend)
+      # A nil memo is not a backend. `defined?` stays true after the ivar is
+      # cleared, which left cloud keys with the s3_/gcs_/azure_ prefix.
+      return @storage_backend if @storage_backend
 
       @storage_backend =
         if cloud_diskfile?
@@ -346,6 +348,10 @@ module RedmineCloudAttachment
         opts[:endpoint] = resolved_endpoint
         # Path-style is required for MinIO and most S3-compatible endpoints.
         opts[:force_path_style] = s3_force_path_style?
+        # aws-sdk-s3 defaults to optional checksum headers. MinIO rejects those
+        # on PutObject, so only send a checksum when the operation requires one.
+        opts[:request_checksum_calculation] = 'when_required'
+        opts[:response_checksum_validation] = 'when_required'
       elsif !cloud_config['force_path_style'].nil?
         opts[:force_path_style] = s3_force_path_style?
       end
@@ -511,6 +517,22 @@ module RedmineCloudAttachment
     def cleanup_after_thumbnail
       cleanup_temp_file
       Rails.logger.debug("[CloudAttachment] Cleaned up temp files after thumbnail for attachment #{id}")
+    end
+
+    # Core compares local files after create. Cloud objects are not local files,
+    # and diskfile would download them to do that comparison.
+    def reuse_existing_file_if_possible
+      return if cloud_diskfile?
+
+      super
+    end
+
+    # Core deletes the local path from diskfile. For a cloud object that path is
+    # a temp download (or nil). delete_from_cloud removes the object.
+    def delete_from_disk!
+      return if cloud_diskfile?
+
+      super
     end
   end
 end
