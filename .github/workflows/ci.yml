@@ -50,17 +50,6 @@ jobs:
         with:
           path: redmine/plugins/redmine_cloud_attachment
 
-      # The published MinIO image command is `minio` and does not start the
-      # server. GitHub Actions service containers cannot replace that command,
-      # so this step runs `minio server /data` directly.
-      - name: Start MinIO
-        run: |
-          docker run -d --name ci-minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z \
-            server /data
-
       - name: Install packages
         run: |
           sudo apt-get update
@@ -95,17 +84,6 @@ jobs:
           bundle config set --local without 'development minimagick'
           bundle install
 
-      - name: Wait for MinIO
-        run: |
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:9000/minio/health/live; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs ci-minio
-          exit 1
-
       - name: Migrate and run plugin tests
         working-directory: redmine
         env:
@@ -115,6 +93,27 @@ jobs:
           MINIO_SECRET_ACCESS_KEY: minioadmin
           MINIO_BUCKET: redmine-attachments
         run: |
+          # Docker Hub denies anonymous pulls of minio/minio. Run the same
+          # release binary in this step so the process stays up for the suite.
+          curl -fL --retry 3 -o /tmp/minio \
+            https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z
+          chmod +x /tmp/minio
+          /tmp/minio --version
+          MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
+            /tmp/minio server /tmp/minio-data --address 127.0.0.1:9000 \
+            > /tmp/minio.log 2>&1 &
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/minio.log
+            exit 1
+          fi
           ruby -v
           bundle exec rake db:migrate redmine:plugins:migrate NAME=redmine_cloud_attachment
           bundle exec rails runner 'puts %(Rails #{Rails.version}); puts %(Redmine #{Redmine::VERSION}); puts %(MySQL #{ActiveRecord::Base.connection.select_value(%q{SELECT VERSION()})})'
